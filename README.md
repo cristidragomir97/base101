@@ -25,11 +25,6 @@ Two configurations, same chassis, different motors.
 
 Both configurations share the same chassis, top plate, bumpers, electronics, and software. The upgrade from base to PRO is a motor and bracket swap.
 
-## Design Philosophy
-
-Inspired by the Roland System 100 — a modular synth from 1975 built as separate compatible units (101, 102, 103, 104). The base101 follows the same principle: a self-contained module that connects to the mod101 arm, Axon controller, and Bolt power hub to form a complete system.
-
-Each module works alone. Together they're a mobile manipulator.
 
 ## Chassis
 
@@ -38,7 +33,6 @@ Each module works alone. Together they're a mobile manipulator.
 **Top plate:** 280×400mm aluminum, 3mm thick, CNC-machined grid of M3 tapped holes on 20mm spacing. Mount anything anywhere — the arm, the lidar, the compute, accessories. No adapters, no T-nuts, just bolt it down.
 
 **Bumpers:** TPU printed corner pieces. Absorb collisions, protect furniture, and visually soften the rectangular chassis. Press-fit onto the extrusion corners, no fasteners needed.
-
 
 
 ## Drivetrain
@@ -72,8 +66,6 @@ Mounted on the top plate. 360° DTOF scanning, 12m range, 5000 samples/sec. Hand
 ### Intel RealSense D435
 
 Front-mounted between the extrusion rails. 87° wide FOV for spatial awareness and 3D perception. Provides point cloud data for obstacle avoidance and workspace mapping. The wide field of view captures the arm's entire workspace in front of the robot.
-
-
 
 
 ## Software
