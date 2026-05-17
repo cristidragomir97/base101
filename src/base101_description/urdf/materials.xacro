@@ -1,0 +1,20 @@
+<?xml version="1.0" ?>
+<robot name="base101" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <material name="silver">
+    <color rgba="0.700 0.700 0.700 1.0"/>
+  </material>
+
+  <material name="body_aluminum">
+    <color rgba="0.770 0.780 0.790 1.0"/>
+  </material>
+
+  <material name="accent_green">
+    <color rgba="0.180 0.580 0.270 1.0"/>
+  </material>
+
+  <material name="motor_black">
+    <color rgba="0.050 0.050 0.050 1.0"/>
+  </material>
+
+</robot>

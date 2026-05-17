@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<robot name="base101" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:arg name="variant" default="simple"/>
+
+  <!-- Force-disable the sim ros2_control + gazebo extensions so this URDF is
+       safe to load on real hardware. Xacro takes the first <xacro:arg> for a
+       given name, so declaring use_sim here before the include overrides the
+       description's default of true. -->
+  <xacro:arg name="use_sim" default="false"/>
+  <xacro:include filename="$(find base101_description)/urdf/base101.xacro"/>
+
+  <!-- =================================================================
+       Hardware ros2_control block — placeholder.
+       Swap the <plugin> for whatever ros2_control SystemInterface drives
+       the real wheel motors (e.g. a custom velocity-controlled CAN/USB
+       motor manager bridge). The joint set below mirrors the sim block
+       in base101_description/urdf/base101.ros2control.
+       ================================================================= -->
+  <ros2_control name="base101_hw_system" type="system">
+    <hardware>
+      <!-- TODO: replace with the real driver plugin -->
+      <plugin>mock_components/GenericSystem</plugin>
+    </hardware>
+
+    <joint name="wheel_front_left">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="wheel_front_right">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="wheel_rear_left">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="wheel_rear_right">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+
+</robot>

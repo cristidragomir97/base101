@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>base101_description</name>
+  <version>0.0.0</version>
+  <description>Unified description package for the base101 robot. Selects between the "simple" and "pro" wheel/bumper variants via a xacro/launch argument.</description>
+  <maintainer email="todo@todo.com">author</maintainer>
+  <license>TODO: License declaration</license>
+
+  <depend>xacro</depend>
+  <depend>rviz2</depend>
+  <depend>robot_state_publisher</depend>
+  <depend>joint_state_publisher</depend>
+  <depend>joint_state_publisher_gui</depend>
+
+  <!-- The .gazebo files contain a gz_ros2_control plugin block that loads
+       $(find base101_control)/config/controllers.<variant>.sim.yaml at
+       Gazebo runtime. That's a path lookup, not a build dep — base101_control
+       is declared as a build-time dep there it lives in base101_gazebo
+       instead, mirroring the mod101 / LLMy convention. -->
+  <exec_depend>gz_ros2_control</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

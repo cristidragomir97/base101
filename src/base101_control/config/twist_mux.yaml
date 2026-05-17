@@ -1,0 +1,27 @@
+# Twist multiplexer for /cmd_vel sources.
+#
+# Input topics are subscribed as plain geometry_msgs/Twist (twist_mux's
+# VelocityTopicHandle is hardcoded to that type). The cmd_vel_out remap (set
+# in the launch) wires the output to /diff_drive_controller/cmd_vel.
+#
+# use_stamped MUST be true on Jazzy: diff_drive_controller's subscription is
+# TwistStamped-only (the old use_stamped_vel toggle was removed). Setting it
+# here makes twist_mux pick its cmd_pub_stamped_ output path so the controller
+# actually receives commands. Leave this on unless you intentionally point
+# twist_mux at a different downstream that takes unstamped Twist.
+twist_mux:
+  ros__parameters:
+    use_stamped: true
+    topics:
+      navigation:
+        topic:    /cmd_vel_nav
+        timeout:  0.5
+        priority: 10
+      joystick:
+        topic:    /cmd_vel_joy
+        timeout:  0.5
+        priority: 100
+      keyboard:
+        topic:    /cmd_vel_key
+        timeout:  0.5
+        priority: 90
