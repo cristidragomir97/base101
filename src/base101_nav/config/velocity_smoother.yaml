@@ -9,14 +9,13 @@ velocity_smoother:
     scale_velocities: false
     feedback: "OPEN_LOOP"
 
-    # Velocity limits [vx, vy, wz] — must match controller.yaml MPPI limits
-    max_velocity: [1.2, 0.0, 2.0]
-    min_velocity: [-0.4, 0.0, -2.0]
+    # Velocity limits [vx, vy, wz] — must match controller.yaml MPPI vx_max/wz_max.
+    max_velocity: [0.8, 0.0, 2.5]
+    min_velocity: [-0.3, 0.0, -2.5]
 
-    # Acceleration limits — stay below diff_drive_controller's 2.5/3.5 hw caps,
-    # but high enough that we actually reach max_velocity within a step or two.
-    max_accel: [1.5, 0.0, 2.5]
-    max_decel: [-2.0, 0.0, -2.5]
+    # Acceleration limits — match diff_drive_controller hw caps (2.5 / 3.5).
+    max_accel: [2.5, 0.0, 3.5]
+    max_decel: [-2.5, 0.0, -3.5]
 
     # Deadband - velocities below this are zeroed
     deadband_velocity: [0.0, 0.0, 0.0]

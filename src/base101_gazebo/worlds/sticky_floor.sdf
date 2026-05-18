@@ -4,7 +4,7 @@
 
     <!-- ===== Physics: simplified settings using mostly defaults ===== -->
     <physics name="ode_stable" type="ode" default="true">
-      <max_step_size>0.001</max_step_size>
+      <max_step_size>0.003</max_step_size>
       <real_time_update_rate>1000</real_time_update_rate>
       <ode>
         <solver>

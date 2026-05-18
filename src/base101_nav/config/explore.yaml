@@ -1,16 +1,43 @@
+# Frontier exploration via explore_lite.
+#
+# Reads Nav2's /global_costmap/costmap (which has inflation applied), NOT
+# SLAM's raw /map. Why: with the raw map, explore_lite kept picking
+# frontiers in spots that LOOK free in SLAM but are too tight for the
+# robot footprint + inflation halo — and then retrying forever because
+# the planner couldn't fit. The costmap source bakes inflation in, so
+# frontiers only land in actually-passable space.
+#
+# Tradeoff (handled): explore_lite calls stop() permanently on its first
+# failed makePlan(), so the global_costmap MUST be populated before
+# explore starts. We address this via:
+#   1. explore launch delay raised to 45 s (slam_nav.launch.py)
+#   2. global_costmap update_frequency bumped for slam_nav mode (3 Hz)
+#   3. planner_frequency 0.05 — retries every 20 s, so brief startup
+#      hiccups don't permanently kill exploration
+#
+# Cost formula: total = potential_scale*distance - gain_scale*size + orientation_scale*yaw_change
+
 explore_node:
   ros__parameters:
     robot_base_frame: base_link
-    costmap_topic: map
-    costmap_updates_topic: map_updates
+
+    # Frontier source — Nav2 global_costmap (inflation-aware).
+    costmap_topic: /global_costmap/costmap
+    costmap_updates_topic: /global_costmap/costmap_updates
+
     visualize: true
-    planner_frequency: 0.33
-    progress_timeout: 20.0              # was 30 — abandon stuck frontiers faster
-    # Cost weights: total = potential_scale*distance - gain_scale*size + orientation_scale*yaw_change
-    # Higher potential_scale = stronger preference for nearby frontiers.
-    potential_scale: 5.0                # was 3.0 — prefer close-by over big-but-far
+    # Re-evaluate frontiers every 20 s. Long enough that the robot
+    # mostly commits to each goal, short enough that startup hiccups
+    # don't permanently stop exploration (explore_lite calls stop()
+    # on first failed scan — 0.02 Hz was making that fragile).
+    planner_frequency: 0.05
+    progress_timeout: 30.0              # abandon a frontier if no progress in 30 s
+    potential_scale: 3.0
     orientation_scale: 0.0
     gain_scale: 1.0
-    transform_tolerance: 1.0
-    min_frontier_size: 0.6              # was 0.3 — ignore tiny edge-of-map noise
+    transform_tolerance: 0.3
+    min_frontier_size: 0.75             # ignore frontiers smaller than 0.75 m
+
+    # When all frontiers are exhausted, stop where we are.
+    # Set true if you want the robot to drive back to its starting pose on completion.
     return_to_init: false

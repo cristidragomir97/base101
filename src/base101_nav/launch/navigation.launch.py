@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
 """
-Navigation Launch File for base101 robot
+Navigation Launch File for base101 robot.
 
-Launches the full Nav2 stack for map-based autonomous navigation:
-- map_server: Serves the static map
-- amcl: Particle filter localization
-- planner_server: Global path planning (SmacPlanner2D)
-- controller_server: Local control (MPPI)
-- bt_navigator: Behavior tree execution
-- behavior_server: Recovery behaviors
-- velocity_smoother: Command smoothing
-- lifecycle_manager: Manages node lifecycle
+Full Nav2 stack against a pre-built map. Localization is done by
+slam_toolbox in localization mode (replaces AMCL + map_server in one
+node — see config/slam_toolbox_localization.yaml).
+
+Map: pass `map:=<base_path>` where <base_path> is the slam_toolbox
+serialized prefix WITHOUT extension (slam_toolbox loads
+<base_path>.posegraph and <base_path>.data).
+
+Stack:
+  - slam_toolbox (localization mode): map + map->odom TF
+  - planner_server (SmacPlanner2D)
+  - smoother_server (SimpleSmoother) — cleans up jagged planner output
+  - controller_server (MPPI)
+  - bt_navigator
+  - behavior_server (spin, backup, drive_on_heading, assisted_teleop, wait)
+  - velocity_smoother
+  - lifecycle_manager
 """
 
 import os
@@ -18,107 +26,73 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, TimerAction
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
+from launch_ros.actions import Node, LifecycleNode
 
 
 def generate_launch_description():
-    # Get package directories
     pkg_dir = get_package_share_directory('base101_nav')
 
-    # Launch arguments
     use_sim_time = LaunchConfiguration('use_sim_time')
-    map_yaml = LaunchConfiguration('map')
+    map_path = LaunchConfiguration('map')
     autostart = LaunchConfiguration('autostart')
 
-    # Config file paths
     planner_config = os.path.join(pkg_dir, 'config', 'planner.yaml')
     controller_config = os.path.join(pkg_dir, 'config', 'controller.yaml')
     costmap_config = os.path.join(pkg_dir, 'config', 'costmap.yaml')
-    amcl_config = os.path.join(pkg_dir, 'config', 'amcl.yaml')
+    localization_config = os.path.join(pkg_dir, 'config', 'slam_toolbox_localization.yaml')
     bt_config = os.path.join(pkg_dir, 'config', 'bt_navigator.yaml')
     behavior_config = os.path.join(pkg_dir, 'config', 'behavior.yaml')
-    smoother_config = os.path.join(pkg_dir, 'config', 'velocity_smoother.yaml')
+    velocity_smoother_config = os.path.join(pkg_dir, 'config', 'velocity_smoother.yaml')
+    # NOTE: no separate smoother_server. SmacPlanner2D smooths internally
+    # (see planner.yaml `smoother:` block). Adding a standalone smoother
+    # caused a BT blackboard race that aborted FollowPath every cycle.
 
-    # BT file paths
     bt_dir = os.path.join(pkg_dir, 'behavior_trees')
 
-    # Default map path
-    default_map = os.path.join(os.path.expanduser('~'), '.base101', 'maps', 'home.yaml')
+    # Default map: slam_toolbox serialized base path, NO extension.
+    default_map = os.path.join(os.path.expanduser('~'), '.base101', 'maps', 'home')
 
     return LaunchDescription([
-        # Declare launch arguments
-        DeclareLaunchArgument(
-            'use_sim_time',
-            default_value='false',
-            description='Use simulation time'
-        ),
-        DeclareLaunchArgument(
-            'map',
-            default_value=default_map,
-            description='Path to map YAML file'
-        ),
-        DeclareLaunchArgument(
-            'autostart',
-            default_value='true',
-            description='Automatically start lifecycle nodes'
-        ),
+        DeclareLaunchArgument('use_sim_time', default_value='false',
+                              description='Use simulation time'),
+        DeclareLaunchArgument('map', default_value=default_map,
+                              description='slam_toolbox serialized map base path (no extension)'),
+        DeclareLaunchArgument('autostart', default_value='true',
+                              description='Automatically start lifecycle nodes'),
 
-        # Map Server
-        Node(
-            package='nav2_map_server',
-            executable='map_server',
-            name='map_server',
+        # slam_toolbox in localization mode — owns map and map->odom TF.
+        LifecycleNode(
+            package='slam_toolbox',
+            executable='localization_slam_toolbox_node',
+            name='slam_toolbox',
+            namespace='',
             output='screen',
             parameters=[
+                localization_config,
                 {'use_sim_time': use_sim_time},
-                {'yaml_filename': map_yaml},
-                {'topic_name': 'map'},
-                {'frame_id': 'map'},
+                {'map_file_name': map_path},
             ]
         ),
 
-        # AMCL - Localization
-        Node(
-            package='nav2_amcl',
-            executable='amcl',
-            name='amcl',
-            output='screen',
-            parameters=[
-                amcl_config,
-                {'use_sim_time': use_sim_time},
-            ]
-        ),
-
-        # Planner Server
         Node(
             package='nav2_planner',
             executable='planner_server',
             name='planner_server',
             output='screen',
-            parameters=[
-                planner_config,
-                costmap_config,
-                {'use_sim_time': use_sim_time},
-            ]
+            parameters=[planner_config, costmap_config,
+                        {'use_sim_time': use_sim_time}]
         ),
 
-        # Controller Server
         Node(
             package='nav2_controller',
             executable='controller_server',
             name='controller_server',
             output='screen',
-            parameters=[
-                controller_config,
-                costmap_config,
-                {'use_sim_time': use_sim_time},
-            ],
-            remappings=[
-                ('cmd_vel', 'cmd_vel_raw'),
-            ]
+            parameters=[controller_config, costmap_config,
+                        {'use_sim_time': use_sim_time}],
+            remappings=[('cmd_vel', 'cmd_vel_raw')]
         ),
 
-        # Behavior Tree Navigator
         Node(
             package='nav2_bt_navigator',
             executable='bt_navigator',
@@ -132,39 +106,29 @@ def generate_launch_description():
             ]
         ),
 
-        # Behavior Server (recovery behaviors)
         Node(
             package='nav2_behaviors',
             executable='behavior_server',
             name='behavior_server',
             output='screen',
-            parameters=[
-                behavior_config,
-                costmap_config,
-                {'use_sim_time': use_sim_time},
-            ],
-            remappings=[
-                ('cmd_vel', 'cmd_vel_raw'),
-            ]
+            parameters=[behavior_config, costmap_config,
+                        {'use_sim_time': use_sim_time}],
+            remappings=[('cmd_vel', 'cmd_vel_raw')]
         ),
 
-        # Velocity Smoother
         Node(
             package='nav2_velocity_smoother',
             executable='velocity_smoother',
             name='velocity_smoother',
             output='screen',
-            parameters=[
-                smoother_config,
-                {'use_sim_time': use_sim_time},
-            ],
+            parameters=[velocity_smoother_config,
+                        {'use_sim_time': use_sim_time}],
             remappings=[
                 ('cmd_vel', 'cmd_vel_raw'),
                 ('cmd_vel_smoothed', 'cmd_vel_nav'),
             ]
         ),
 
-        # Lifecycle Manager - delayed start to allow nodes to register
         TimerAction(
             period=3.0,
             actions=[
@@ -178,8 +142,7 @@ def generate_launch_description():
                         {'autostart': autostart},
                         {'bond_timeout': 20.0},
                         {'node_names': [
-                            'map_server',
-                            'amcl',
+                            'slam_toolbox',
                             'planner_server',
                             'controller_server',
                             'bt_navigator',

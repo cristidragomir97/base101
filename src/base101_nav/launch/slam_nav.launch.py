@@ -35,6 +35,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     autostart = LaunchConfiguration('autostart')
     explore = LaunchConfiguration('explore')
+    rviz = LaunchConfiguration('rviz')
 
     # Config file paths
     explore_config = os.path.join(pkg_dir, 'config', 'explore.yaml')
@@ -44,7 +45,8 @@ def generate_launch_description():
     costmap_config = os.path.join(pkg_dir, 'config', 'costmap_mapfree.yaml')
     bt_config = os.path.join(pkg_dir, 'config', 'bt_navigator.yaml')
     behavior_config = os.path.join(pkg_dir, 'config', 'behavior.yaml')
-    smoother_config = os.path.join(pkg_dir, 'config', 'velocity_smoother.yaml')
+    velocity_smoother_config = os.path.join(pkg_dir, 'config', 'velocity_smoother.yaml')
+    rviz_config = os.path.join(pkg_dir, 'config', 'nav.rviz')
 
     # BT file paths
     bt_dir = os.path.join(pkg_dir, 'behavior_trees')
@@ -102,6 +104,23 @@ def generate_launch_description():
             'explore',
             default_value='false',
             description='Enable autonomous frontier exploration'
+        ),
+        DeclareLaunchArgument(
+            'rviz',
+            default_value='true',
+            description='Start RViz with nav.rviz preloaded'
+        ),
+
+        # RViz with the nav preset (Map, costmaps, paths, Nav2 panel).
+        # Opt-out via rviz:=false when running RViz on a different machine.
+        Node(
+            condition=IfCondition(rviz),
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            output='screen',
+            arguments=['-d', rviz_config],
+            parameters=[{'use_sim_time': use_sim_time}],
         ),
 
         # No EKF here: there's no IMU on base101 yet, and diff_drive_controller
@@ -179,7 +198,7 @@ def generate_launch_description():
             name='velocity_smoother',
             output='screen',
             parameters=[
-                smoother_config,
+                velocity_smoother_config,
                 {'use_sim_time': use_sim_time},
             ],
             remappings=[
@@ -215,11 +234,12 @@ def generate_launch_description():
         ),
 
         # Autonomous frontier exploration (optional). Long delay so SLAM has
-        # had time to publish the first map -> odom TF; explore_lite stamps
-        # goals with current time, and goals stamped before SLAM's first TF
-        # publish trigger TF extrapolation errors in planner_server.
+        # had time to publish the first map -> odom TF AND the global_costmap
+        # has had time to populate FREE cells from SLAM updates. explore_lite
+        # calls stop() permanently on its first failed makePlan() — the
+        # delay is the cheapest insurance against that.
         TimerAction(
-            period=30.0,
+            period=45.0,
             actions=[
                 Node(
                     condition=IfCondition(explore),

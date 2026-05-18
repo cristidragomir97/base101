@@ -49,7 +49,7 @@ global_costmap:
 local_costmap:
   local_costmap:
     ros__parameters:
-      update_frequency: 5.0               # Nav2 default
+      update_frequency: 3.0               # was 5.0 Nav2 default, lowered for RTF on this dev box
       publish_frequency: 2.0
       global_frame: odom
       robot_base_frame: base_link

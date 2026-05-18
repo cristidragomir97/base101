@@ -99,21 +99,46 @@ collision geometry live).
 
 ## Controller choice
 
-Started on MPPI (LLMy's default) for ~5 minutes before deciding it was
-overkill: a flat 2D diff drive in indoor environments doesn't need a
-2000-sample × 56-step model predictive controller. Swapped in
-**Regulated Pure Pursuit** (RPP):
+**Final answer: MPPI, with TurtleBot4's canonical params + raised
+velocity caps for base101 hardware.** `controller.yaml` is a direct
+adoption of `turtlebot4_navigation/config/nav2.yaml`'s MPPI block,
+which itself follows `nav2_bringup` defaults.
 
-- ~1/20th of MPPI's compute.
-- ~6 main knobs vs MPPI's ~30 (8 critics, each with weight + threshold).
-- Tradeoff: RPP follows the global path rigidly; doesn't reason about
-  obstacles itself, relies on planner replanning + costmap inflation.
+The path here had a detour. Original config (from LLMy) was MPPI.
+Mid-debugging, swapped to **Regulated Pure Pursuit (RPP)** on the
+reasoning that "MPPI is overkill for indoor diff drive" — ~1/20th the
+compute, ~6 knobs instead of ~30. Worked, but at that point the real
+problems were the costmap inflation pattern and the BT recovery loops,
+not the controller. RPP was solving a problem we didn't actually
+have, and at the cost of weaker handling of:
+- **Dynamic obstacles** — MPPI samples 2000 trajectories around them;
+  RPP just follows the global path and asks the planner to replan.
+- **Tight maneuvers** — MPPI deviates from path to fit; RPP slows or
+  aborts.
+- **Smooth motion** — MPPI's critic system balances competing
+  objectives; RPP is rigid path-following.
 
-`controller.yaml` is now a fresh-written RPP config, not a tweaked
-MPPI one. Tunables most likely to touch:
-- `desired_linear_vel` (top speed)
-- `lookahead_time` (bigger = smoother, cuts corners; smaller = tighter)
-- `rotate_to_heading_min_angle` (when to turn-in-place vs drive-and-curve)
+After the costmap and BT were fixed against the canonical pattern,
+re-evaluated: MPPI is what Nav2 ships and what TB4 uses. CPU isn't a
+constraint on dev hardware (~20% of one core), and even an SBC
+handles it. **Swapped back.**
+
+Only deviations from TB4 in our MPPI block:
+- `vx_max: 0.5 → 1.0` (base101 is bigger and faster; hw allows 1.5).
+- `vy_max: 0.5 → 0.0` (cosmetic — DiffDrive motion model zeros it
+  anyway, but clearer this way).
+
+Tunables most likely to touch (in priority order):
+- `vx_max`, `wz_max` — velocity envelope.
+- `PathAlignCritic.cost_weight` (14.0) — how rigidly to follow the
+  global path. Lower → more willing to cut corners around obstacles.
+- `PreferForwardCritic.cost_weight` (5.0) — penalty for reverse motion.
+- `CostCritic.cost_weight` (3.81) — penalty for being near obstacles.
+- `batch_size` (2000) — drop to 1000 if CPU-bound on an SBC.
+
+Lesson echoed from the costmap section: when in doubt, **stay on
+canonical**. Swapping for "simpler" is rarely the right call unless
+you can name a specific behavior the canonical thing is doing wrong.
 
 ## Bug trail
 
@@ -330,6 +355,283 @@ Hardware caps in `controllers.{pro,simple}.sim.yaml` are 1.5 m/s and
 2.5 rad/s; controller is configured 0.3 below hw to leave headroom
 for the smoother to actually reach commanded velocities without
 clipping at the diff_drive_controller layer.
+
+## Plugin upgrades (round 3)
+
+After the controller revert to MPPI, did a sweep of other Nav2 plugin
+slots to align with canonical patterns / pick up obvious wins:
+
+### Path smoother — added then reverted
+
+First attempt: added a separate `smoother_server` running
+`nav2_smoother::SimpleSmoother`, with `<SmoothPath unsmoothed_path="{path}"
+smoothed_path="{path}" smoother_id="simple_smoother"/>` placed inside
+the `ComputePathToPose` Sequence in both BTs.
+
+**This broke FollowPath.** Symptom: every 1 s the controller logged
+"Aborting handle" then "Passing new path to controller", cycling
+forever. The robot never followed any single path long enough to make
+progress, and eventually progress_checker killed the goal.
+
+Root cause: BT blackboard race. Both `ComputePathToPose` and
+`SmoothPath` wrote to the same `{path}` variable, but at different
+points within the same cycle:
+
+1. ComputePathToPose returns SUCCESS, writes to `{path}` → FollowPath
+   sees update, starts following.
+2. SmoothPath runs, eventually writes to `{path}` again → FollowPath
+   sees a *second* update in the same cycle, treats it as a new goal,
+   aborts the previous handle.
+
+In a PipelineSequence (which ticks all children every round), this
+mid-cycle mutation guarantees FollowPath aborts every cycle.
+
+The fix-in-place would be writing to a separate `{unsmoothed_path}`
+variable for ComputePathToPose then atomically swapping into `{path}`
+via SmoothPath. But noticed a more important fact: **SmacPlanner2D
+already has a built-in smoother** configured in `planner.yaml`
+(lines 20-25 — `smoother: {max_iterations: 1000, w_smooth: 0.3, ...}`).
+We were going to double-smooth anyway.
+
+**Reverted:** removed SmoothPath from both BTs, removed smoother_server
+node from both launches (+ lifecycle_manager node_names), deleted
+`config/smoother.yaml`, dropped `nav2_smoother` from package.xml.
+SmacPlanner2D handles smoothing internally, no race, no extra
+lifecycle node.
+
+Lesson: before adding a Nav2 plugin, check what the things you already
+have ship with. Many planners do smoothing internally; many smoothers
+need careful BT wiring to avoid blackboard races.
+
+### Explore_lite — reverted to upstream defaults
+
+Same review pass on `config/explore.yaml`. Found 5 deviations from
+upstream's `params_costmap.yaml`, all of them band-aids for the
+costmap problems that are now actually fixed:
+
+- `planner_frequency`: 0.33 → **0.15** (gives robot time to drive to
+  a frontier before reconsidering).
+- `progress_timeout`: 20.0 → **30.0** s.
+- `potential_scale`: 5.0 → **3.0** (the "prefer nearby" hack — was
+  compensating for goals landing outside costmap bounds, which is no
+  longer a thing).
+- `transform_tolerance`: 1.0 → **0.3** (was raised when we had TF
+  extrapolation chaos; fine now that sim_time is right).
+- `min_frontier_size`: 0.6 → **0.75** (upstream's value; more
+  conservative — skips small noise frontiers).
+
+Also switched `costmap_topic` from SLAM's raw `/map` to the
+inflation-aware `/global_costmap/costmap`. Two benefits:
+1. Frontiers are picked in actually-passable space (respecting
+   inflation around walls), so explore stops sending "looks-free-but-
+   inflated-into-wall" goals that the planner can't reach.
+2. Consistent with the upstream `params_costmap.yaml` variant, which
+   is the recommended choice when used alongside Nav2.
+
+Kept `return_to_init: false` (our preference — don't want the long
+return trip during dev testing).
+
+### Follow-up: "No frontiers found, stopping"
+
+After switching `costmap_topic` to `/global_costmap/costmap`, explore
+immediately said "No frontiers found, stopping" and quit. Self-inflicted
+config conflict from two rounds ago:
+
+1. Earlier (track_unknown_space round): set
+   `global_costmap.track_unknown_space: false` so the planner could
+   cross unknown cells while SLAM was still mapping.
+2. Now (explore round): switched explore from `/map` to
+   `/global_costmap/costmap` so frontier picks respect inflation.
+
+Problem: `track_unknown_space: false` collapses unknown cells in the
+costmap output to free. The costmap **no longer has unknown cells**,
+so explore_lite finds zero frontiers (which are by definition
+free/unknown boundaries).
+
+The semantic confusion was mine: `track_unknown_space` controls
+whether the costmap *distinguishes* unknown from free in its output
+— it's *not* "should the planner respect unknown" (that's the
+planner's `allow_unknown` setting, a separate knob entirely).
+
+Right answer (Nav2's canonical SLAM+explore pattern):
+
+- `global_costmap.track_unknown_space: true` → costmap output has
+  unknown cells → explore_lite finds frontiers.
+- `planner.allow_unknown: true` → planner is allowed to cross unknown
+  cells when generating paths to those frontiers.
+
+Both consumers get what they need from one costmap. Should have done
+this in the first place; the original `track_unknown_space: false`
+fix was working around `allow_unknown: false` on the planner, when
+the cleaner fix was the inverse — flip the planner's switch and let
+the costmap do its job.
+
+Meta-lesson: when one component is doing the wrong thing, fix it at
+the right layer. I changed costmap semantics to compensate for a
+planner default; that fix worked locally but broke a consumer
+downstream (explore). Cost: one full round of "explore is broken"
+debugging that wasn't actually about explore.
+
+## Final velocity / kinematics pass
+
+After the stack was working end-to-end (paths correct, following
+correct, no recovery firing) rotation still felt slow and overshooty.
+Audit revealed three stacked issues:
+
+### Velocity envelope was fictional
+
+The MPPI block had `vx_max: 1.0` (carried over from earlier tuning
+rounds). But the **simple** variant (DDSM210, 72.6 mm wheels) caps
+at **210 RPM → 0.81 m/s real maximum**. We were commanding velocities
+the hardware can't physically reach; the sim would happily oblige
+(unconstrained motor models), but anything tuned at sim speeds
+wouldn't transfer to hardware. Aligned MPPI + velocity_smoother caps
+to the real envelope: `vx_max: 0.8`, `vx_min: -0.3`.
+
+For the PRO variant (DDSM115, 100.7 mm wheel, higher RPM), the cap
+would be ~1.5 m/s — leave a comment in the config to flip if/when we
+test against the pro variant in sim.
+
+### Rotation was undertuned at every layer
+
+| Layer | Was | Now |
+|---|---|---|
+| MPPI `wz_max` | 1.9 rad/s | **2.5** (matches `controllers.simple.sim.yaml` hw cap) |
+| MPPI `az_max` | 3.5 | 3.5 (unchanged — already at hw cap) |
+| velocity_smoother `max_velocity[wz]` | 2.0 | **2.5** (was below MPPI's, capping output) |
+| velocity_smoother `max_accel[wz]` | 2.5 | **3.5** (was throttling rotation onset) |
+| GoalAngleCritic `cost_weight` | 3.0 | **6.0** (penalize off-heading harder → less orbiting / overshoot) |
+
+Note the velocity_smoother had a lower wz cap than MPPI — meaning even
+when MPPI commanded 1.9, the smoother clamped to 2.0 (so OK there),
+but the accel limit of 2.5 rad/s² meant reaching that target took
+~0.8s. Now ramps to full speed in ~0.5s.
+
+### RTF tweaks for dev box
+
+Three changes after Gazebo RTF dropped under the full Nav2 + RViz
+load:
+
+1. `worlds/{sticky_floor,empty}.sdf` `<max_step_size>`:
+   0.001 → **0.003** (3x coarser physics — fine for indoor wheeled).
+2. MPPI `batch_size`: 2000 → **1000** (half the per-tick controller
+   compute; canonical Nav2/TB4 default is 2000, but unnecessary at
+   our speeds).
+3. Local costmap `update_frequency`: 5 → **3 Hz** (reactivity drop
+   marginal for static-ish indoor).
+
+If RTF is still bad after this, the heaviest single thing is RViz —
+running it on another machine, or closing it during long exploration
+runs, gives the biggest gain.
+
+### explore_lite commitment: planner_frequency 0.15 → 0.05
+
+With the upstream `planner_frequency: 0.15` (re-evaluate frontier
+choice every ~7 s), the explorer kept swapping targets mid-trip as
+the SLAM map grew and new frontiers appeared. Visually: robot drives
+2 s toward A, switches to B, drives 4 s toward B, switches to C...
+Made fast progress feel hesitant.
+
+Dropped to **0.02 Hz** (every 50 s) — effectively "finish current goal
+before picking the next." Most reachable goals complete inside that
+window. The explorer only intervenes if `progress_timeout: 30 s` fires
+first (genuinely stuck goal) or the trip exceeds 50 s.
+
+### Re-reverted: costmap_topic back to /global_costmap/costmap
+
+End-of-exploration symptom: explorer picked a frontier that *looked*
+passable on SLAM's raw `/map` but was actually too tight for
+footprint + 0.55 m inflation halo. Planner couldn't find a valid path,
+robot retried the same frontier forever (the blacklist-on-progress-
+timeout mechanism in explore_lite isn't reliable enough — the same
+"tight spot" produced multiple adjacent frontier clusters and explore
+kept picking new ones from the same unreachable zone).
+
+Switched back to `/global_costmap/costmap` for the inflation-aware
+frontier picks. Three changes to make the startup race we hit before
+non-fatal:
+
+1. `global_costmap.update_frequency`: 1.0 → **3.0 Hz** (canonical
+   Nav2 default is for static maps; with a *growing* SLAM map we need
+   the costmap to absorb new free cells fast enough that explore's
+   first scan finds clear cells near the robot).
+2. Explore launch delay in `slam_nav.launch.py`: 30 → **45 s** (gives
+   SLAM and the costmap time to populate before explore runs `makePlan()`).
+3. `planner_frequency`: 0.02 → **0.05 Hz** (every 20 s). The previous
+   0.02 made explore_lite's "stop on first failed scan" behavior
+   fragile — one transient hiccup at startup permanently ended
+   exploration. 0.05 still commits the robot to each goal for most
+   of its trip but allows reasonable recovery if a scan fails.
+
+This is the third costmap_topic flip-flop. Locking in the rationale:
+- `/map` (SLAM raw): explore sees free space SLAM has scanned, but
+  doesn't see inflation → picks unreachable tight-corner frontiers.
+- `/global_costmap/costmap`: inflation-aware, frontiers are
+  reachable, but startup is fragile because the costmap has to fill
+  before explore's first attempt.
+
+The right answer is the second + careful startup hygiene, not the
+first. Took two rounds to confirm.
+
+### (Previously) Reverted costmap_topic: /global_costmap/costmap → /map
+
+The earlier switch to `/global_costmap/costmap` (so frontiers respect
+inflation) hit a new failure: at startup, the Nav2 costmap's FREE
+cells take a while to populate (`update_frequency: 1 Hz`, plus initial
+StaticLayer/ObstacleLayer fill time), and during that window
+explore_lite sees no clear cell near the robot. Crucially, when
+`makePlan()` fails, explore_lite calls `stop()` *permanently* — it
+never retries. With `planner_frequency: 0.02 Hz` (50 s between
+attempts), the first call is critical; if it fails, the session is
+over.
+
+Switched the source back to SLAM's raw `/map` topic. slam_toolbox
+publishes free space around the robot from the very first scan, so
+explore can find clear cells immediately. Tradeoff (knowingly
+re-accepted): explore picks frontiers without seeing Nav2's
+inflation, occasionally choosing goals near walls that the planner
+then has to route around or fail.
+
+If unreachable-frontier picks become a problem, the next move is to
+keep `costmap_topic: map` but raise `min_frontier_size` (currently
+0.75) so we only chase clearly-passable openings.
+
+Tradeoff: marginally slower reaction to "this frontier just became
+unreachable because we discovered a wall." In practice, when that
+happens the planner fails fast and the BT triggers replanning anyway,
+so explore catches up within one cycle.
+
+### Localization: AMCL → slam_toolbox (localization mode)
+- **What:** navigation.launch.py no longer launches `nav2_amcl` +
+  `nav2_map_server`. Replaced with `slam_toolbox` in
+  `mode: localization` (config: `config/slam_toolbox_localization.yaml`).
+  One node now provides both the map and the `map → odom` TF.
+- **Why:** slam_toolbox's scan-matching localizer is typically more
+  accurate and smoother than AMCL on the same environment, and
+  slam_toolbox is already a workspace dep so no extra runtime weight.
+- **Map format change:** the saved map is now slam_toolbox's
+  serialized format (`<basename>.posegraph` + `<basename>.data`), NOT
+  the AMCL `.yaml` + `.pgm` pair. The `map:=` launch arg is now a
+  base path with NO extension. To produce the files, run mapping mode
+  then call:
+  ```
+  ros2 service call /slam_toolbox/serialize_map slam_toolbox/srv/SerializePoseGraph \
+    "{filename: '/home/$USER/.base101/maps/home'}"
+  ```
+
+### Progress checker: SimpleProgressChecker → PoseProgressChecker
+- **What:** One-line swap in `config/controller.yaml`.
+- **Why:** `SimpleProgressChecker` only watches xy translation. A robot
+  spinning in place forever (e.g. stuck rotating away from a wall) never
+  trips it. `PoseProgressChecker` also watches yaw change, catching that
+  failure mode.
+- **Params:** kept `required_movement_radius: 0.5` from before; added
+  `required_movement_angle: 0.5` (~28°).
+
+### Renamed `smoother_config` → `velocity_smoother_config` in launch files
+- Previously the variable name `smoother_config` referred to the
+  *velocity* smoother. With a path smoother now in the picture, that's
+  confusing. Renamed both, plus added `path_smoother_config`.
 
 ## Retro: we approached this wrong
 
