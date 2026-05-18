@@ -1,0 +1,29 @@
+# Velocity Smoother Configuration for base101 robot
+# Smooths velocity commands to prevent jerky motion
+
+velocity_smoother:
+  ros__parameters:
+    enable_stamped_cmd_vel: true
+    use_sim_time: false
+    smoothing_frequency: 30.0
+    scale_velocities: false
+    feedback: "OPEN_LOOP"
+
+    # Velocity limits [vx, vy, wz] — must match controller.yaml MPPI limits
+    max_velocity: [1.2, 0.0, 2.0]
+    min_velocity: [-0.4, 0.0, -2.0]
+
+    # Acceleration limits — stay below diff_drive_controller's 2.5/3.5 hw caps,
+    # but high enough that we actually reach max_velocity within a step or two.
+    max_accel: [1.5, 0.0, 2.5]
+    max_decel: [-2.0, 0.0, -2.5]
+
+    # Deadband - velocities below this are zeroed
+    deadband_velocity: [0.0, 0.0, 0.0]
+
+    # Timeout - stop if no command received
+    velocity_timeout: 1.0
+
+    # Topic remappings handled in launch file
+    odom_topic: "/diff_drive_controller/odom"
+    odom_duration: 0.1

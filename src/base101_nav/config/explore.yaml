@@ -1,0 +1,16 @@
+explore_node:
+  ros__parameters:
+    robot_base_frame: base_link
+    costmap_topic: map
+    costmap_updates_topic: map_updates
+    visualize: true
+    planner_frequency: 0.33
+    progress_timeout: 20.0              # was 30 — abandon stuck frontiers faster
+    # Cost weights: total = potential_scale*distance - gain_scale*size + orientation_scale*yaw_change
+    # Higher potential_scale = stronger preference for nearby frontiers.
+    potential_scale: 5.0                # was 3.0 — prefer close-by over big-but-far
+    orientation_scale: 0.0
+    gain_scale: 1.0
+    transform_tolerance: 1.0
+    min_frontier_size: 0.6              # was 0.3 — ignore tiny edge-of-map noise
+    return_to_init: false

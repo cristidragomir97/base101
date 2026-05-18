@@ -1,0 +1,88 @@
+# Costmap Configuration for base101 robot (Mapfree Mode)
+# Used in mapfree mode - no static map, rolling windows only
+
+# Global costmap - rolling window without static map
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      update_frequency: 1.0               # Nav2 default
+      publish_frequency: 1.0
+      global_frame: map                   # SLAM publishes /map and map->odom
+      robot_base_frame: base_link
+      use_sim_time: false
+      footprint: "[[0.25, 0.24], [0.25, -0.24], [-0.25, -0.24], [-0.25, 0.24]]"
+      resolution: 0.05
+      # Critical for SLAM+explore: treat unknown cells as free, otherwise
+      # the planner refuses to plan toward frontiers (which by definition
+      # border unknown space) and we sit forever in "no valid path found".
+      track_unknown_space: false
+      rolling_window: false               # Use full SLAM map, not a rolling window
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
+        subscribe_to_updates: true
+        map_topic: /map
+        # Don't inflate unknown cells; we want them passable.
+        trinary_costmap: true
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          data_type: "LaserScan"
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 2.5
+          obstacle_min_range: 0.0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.55
+
+      always_send_full_costmap: true
+
+# Local costmap - same as map-based mode
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 5.0               # Nav2 default
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      use_sim_time: false
+      footprint: "[[0.25, 0.24], [0.25, -0.24], [-0.25, -0.24], [-0.25, 0.24]]"
+      rolling_window: true
+      width: 3
+      height: 3
+      resolution: 0.05
+      plugins: ["obstacle_layer", "inflation_layer"]
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          data_type: "LaserScan"
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 2.5
+          obstacle_min_range: 0.0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.55
+
+      always_send_full_costmap: true

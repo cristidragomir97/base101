@@ -1,0 +1,21 @@
+launch:
+
+- arg:
+    name: use_sim_time
+    default: 'false'
+    description: Use simulation time
+- arg:
+    name: maps_dir
+    default: ~/.base101/maps
+    description: Directory for map storage
+
+- node:
+    pkg: base101_nav
+    exec: mode_manager.py
+    name: mode_manager
+    output: screen
+    param:
+    - name: use_sim_time
+      value: $(var use_sim_time)
+    - name: maps_dir
+      value: $(var maps_dir)

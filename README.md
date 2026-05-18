@@ -79,6 +79,7 @@ ROS 2 Jazzy workspace. The `diff_drive_controller` handles skid-steer kinematics
 | `base101_description` | ament_python | Unified URDF (simple/pro selectable via xacro arg), meshes, RViz config. |
 | `base101_control` | ament_cmake | `diff_drive_controller` + `twist_mux` config, hardware bringup launch. |
 | `base101_gazebo` | ament_cmake | Gazebo Sim worlds, launch, ros↔gz bridge. |
+| `base101_nav` | ament_cmake | Nav2 + slam_toolbox + frontier exploration. Configs, launches, RViz preset. |
 | `base101_teleop_web` | ament_python | Browser-based virtual joystick → `/cmd_vel_joy`. |
 | `rosboard` | ament_python | Vendored web dashboard (publishes a Teleop card too). |
 
@@ -93,6 +94,29 @@ ros2 launch base101_gazebo gazebo.launch.py variant:=pro world:=empty.sdf
 
 Web teleop is at `http://localhost:8888/` (rosboard) once the sim is up.
 
+### Navigation, SLAM, and Exploration
+
+`base101_nav` ships a full Nav2 stack tuned for the base101 differential drive: SmacPlanner2D for global planning, Regulated Pure Pursuit for local control, slam_toolbox for online mapping, and `explore_lite` (vendored via `base101.repos`) for autonomous frontier exploration. Maps go in `~/.base101/maps/`. An RViz preset with Map, costmaps, paths, and the Nav2 goal panel is at `base101_nav/config/nav.rviz`.
+
+```bash
+# Drive around manually and build a map
+ros2 launch base101_nav mapping.launch.py use_sim_time:=true
+# (save with: ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap "{name: {data: '/home/$USER/.base101/maps/home'}}")
+
+# Navigate inside a saved map
+ros2 launch base101_nav navigation.launch.py map:=$HOME/.base101/maps/home.yaml use_sim_time:=true
+
+# SLAM + Nav2 at the same time, with optional autonomous exploration
+ros2 launch base101_nav slam_nav.launch.py use_sim_time:=true explore:=true
+
+# RViz with everything preconfigured
+ros2 launch base101_nav rviz.launch.py use_sim_time:=true
+```
+
+Pass `use_sim_time:=true` on every launch when running against Gazebo (sim/wall-clock mismatch causes silent TF extrapolation failures otherwise). Outputs are remapped through `velocity_smoother → /cmd_vel_nav → twist_mux → /diff_drive_controller/cmd_vel`, so joystick/keyboard inputs still preempt nav at their existing higher priorities.
+
+Runtime deps not in apt: `explore_lite` is pulled in via `vcs import src < base101.repos`. Everything else (`nav2_*`, `slam_toolbox`, `robot_localization`) is `ros-jazzy-*` packages.
+
 
 
 ## Project Status
@@ -104,7 +128,7 @@ Web teleop is at `http://localhost:8888/` (rosboard) once the sim is up.
 - [x] URDF/xacro
 - [x] Gazebo simulation
 - [x] ros2_control integration
-- [ ] Nav2 configuration
+- [x] Nav2 + SLAM + frontier exploration
 - [ ] E-stop handle mechanism
 - [ ] CNC top plate manufacturing files (DXF)
 - [ ] Combined base101 + mod101 system launch

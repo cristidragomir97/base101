@@ -1,0 +1,108 @@
+launch:
+
+- arg:
+    name: use_sim_time
+    default: 'false'
+    description: Use simulation time
+- arg:
+    name: autostart
+    default: 'true'
+    description: Automatically start lifecycle nodes
+
+- node:
+    pkg: tf2_ros
+    exec: static_transform_publisher
+    name: static_map_to_odom
+    output: screen
+    args: '0 0 0 0 0 0 map odom'
+
+- node:
+    pkg: nav2_planner
+    exec: planner_server
+    name: planner_server
+    output: screen
+    param:
+    - from: $(find-pkg-share base101_nav)/config/planner.yaml
+    - from: $(find-pkg-share base101_nav)/config/costmap_mapfree.yaml
+    - name: use_sim_time
+      value: $(var use_sim_time)
+
+- node:
+    pkg: nav2_controller
+    exec: controller_server
+    name: controller_server
+    output: screen
+    param:
+    - from: $(find-pkg-share base101_nav)/config/controller.yaml
+    - from: $(find-pkg-share base101_nav)/config/costmap_mapfree.yaml
+    - name: use_sim_time
+      value: $(var use_sim_time)
+    remap:
+    - from: cmd_vel
+      to: cmd_vel_raw
+
+- node:
+    pkg: nav2_bt_navigator
+    exec: bt_navigator
+    name: bt_navigator
+    output: screen
+    param:
+    - from: $(find-pkg-share base101_nav)/config/bt_navigator.yaml
+    - name: use_sim_time
+      value: $(var use_sim_time)
+    - name: default_nav_to_pose_bt_xml
+      value: $(find-pkg-share base101_nav)/behavior_trees/nav_to_pose.xml
+    - name: default_nav_through_poses_bt_xml
+      value: $(find-pkg-share base101_nav)/behavior_trees/nav_through_poses.xml
+
+- node:
+    pkg: nav2_behaviors
+    exec: behavior_server
+    name: behavior_server
+    output: screen
+    param:
+    - from: $(find-pkg-share base101_nav)/config/behavior.yaml
+    - from: $(find-pkg-share base101_nav)/config/costmap_mapfree.yaml
+    - name: use_sim_time
+      value: $(var use_sim_time)
+    remap:
+    - from: cmd_vel
+      to: cmd_vel_raw
+
+- node:
+    pkg: nav2_velocity_smoother
+    exec: velocity_smoother
+    name: velocity_smoother
+    output: screen
+    param:
+    - from: $(find-pkg-share base101_nav)/config/velocity_smoother.yaml
+    - name: use_sim_time
+      value: $(var use_sim_time)
+    remap:
+    - from: cmd_vel
+      to: cmd_vel_raw
+    - from: cmd_vel_smoothed
+      to: cmd_vel_nav
+
+- timer:
+    period: 3.0
+    children:
+    - node:
+        pkg: nav2_lifecycle_manager
+        exec: lifecycle_manager
+        name: lifecycle_manager_mapfree
+        output: screen
+        param:
+        - name: use_sim_time
+          value: $(var use_sim_time)
+        - name: autostart
+          value: $(var autostart)
+        - name: bond_timeout
+          value: 20.0
+        - name: node_names
+          value:
+          - planner_server
+          - controller_server
+          - bt_navigator
+          - behavior_server
+          - velocity_smoother
