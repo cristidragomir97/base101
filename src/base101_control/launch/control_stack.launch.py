@@ -34,7 +34,7 @@ def _setup(context, *args, **kwargs):
     ])
 
     robot_description = ParameterValue(
-        Command(['xacro ', hardware_xacro, ' variant:=', variant, ' use_sim:=false']),
+        Command(['xacro ', hardware_xacro, ' variant:=', variant, ' simulator:=none']),
         value_type=str,
     )
 

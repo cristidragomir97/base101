@@ -7,8 +7,8 @@
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
 
-# Camera info for head_camera. The image stream itself goes through the
+# Camera info for base_camera. The image stream itself goes through the
 # dedicated ros_gz_image bridge (started in the launch file).
-- topic_name: "/head_camera/camera_info"
+- topic_name: "/base_camera/camera_info"
   ros_type_name: "sensor_msgs/msg/CameraInfo"
   gz_type_name: "gz.msgs.CameraInfo"

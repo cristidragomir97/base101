@@ -1,0 +1,137 @@
+<?xml version="1.0" ?>
+<!--
+  base101 SIMPLE-variant MuJoCo scene.
+
+  Physics-only MJCF: kinematics are simplified to the 4 hub-motor wheels +
+  chassis box that diff_drive_controller cares about. RViz still gets the
+  full visual URDF via robot_state_publisher.
+
+  Joint names MUST match base101.mujoco.ros2control so the MujocoSystem
+  hardware plugin can bind each ros2_control joint to mjData qvel.
+
+  Track / wheel geometry matches base101_control/config/controllers.simple.sim.yaml:
+    wheel_separation = 0.2886 m  (half-track = 0.1443)
+    wheel_radius     = 0.0363 m  (72.6 mm DDSM210 hub)
+-->
+<mujoco model="base101_simple">
+  <compiler angle="radian"/>
+
+  <option timestep="0.001" gravity="0 0 -9.81"/>
+
+  <visual>
+    <headlight ambient="0.55 0.55 0.55" diffuse="0.4 0.4 0.4" specular="0.1 0.1 0.1"/>
+    <map znear="0.01"/>
+    <global offwidth="640" offheight="480"/>
+  </visual>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker"
+             rgb1="0.85 0.85 0.85" rgb2="0.95 0.95 0.95"
+             width="512" height="512"/>
+    <material name="grid_mat" texture="grid" texrepeat="20 20" reflectance="0.0"/>
+    <material name="chassis_mat" rgba="0.72 0.72 0.74 1"/>
+    <material name="wheel_mat"   rgba="0.08 0.08 0.08 1"/>
+    <material name="accent_mat"  rgba="0.20 0.65 0.30 1"/>
+  </asset>
+
+  <!--
+    Geom groups encode "is the lidar allowed to see this?".
+      group 0 = static world (floor, obstacles)  -> lidar raycasts hit these.
+      group 1 = robot                            -> lidar bridge excludes
+                                                    these via geomgroup.
+  -->
+  <default>
+    <default class="world">
+      <geom group="0" contype="1" conaffinity="1"/>
+    </default>
+    <default class="chassis">
+      <geom group="1" contype="2" conaffinity="1"/>
+    </default>
+    <default class="wheel">
+      <geom group="1" type="cylinder" contype="2" conaffinity="1"
+            friction="1.0 0.005 0.0001" material="wheel_mat"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <light name="overhead" pos="0 0 4" dir="0 0 -1" diffuse="0.7 0.7 0.7"/>
+    <light name="sun"      pos="3 3 6" dir="-0.3 -0.3 -1" diffuse="0.4 0.4 0.4"/>
+
+    <geom class="world" name="floor" type="plane"
+          size="20 20 0.1" material="grid_mat"/>
+
+    <!-- Reference obstacles so the lidar has something to see on first launch. -->
+    <geom class="world" name="ref_box_front" type="box"
+          pos="2.0 0 0.25" size="0.20 0.20 0.25"
+          rgba="0.2 0.5 0.9 1"/>
+    <geom class="world" name="ref_box_left" type="box"
+          pos="0 1.5 0.15" size="0.15 0.15 0.15"
+          rgba="0.9 0.4 0.2 1"/>
+    <geom class="world" name="ref_box_right" type="box"
+          pos="0.6 -1.2 0.20" size="0.18 0.18 0.20"
+          rgba="0.7 0.7 0.2 1"/>
+
+    <body name="base_link" pos="0 0 0.077" euler="0 0 0">
+      <freejoint name="base_free"/>
+      <inertial pos="0.004 -0.008 0.009" mass="0.666"
+                diaginertia="0.0032 0.0064 0.0096"/>
+      <!-- Simplified chassis collision shell: 400x280x80 mm. -->
+      <geom class="chassis" type="box"
+            size="0.20 0.14 0.04" material="chassis_mat"/>
+
+      <!-- Bumper accents (visual only). -->
+      <geom class="chassis" type="box" pos=" 0.20  0.14 0" size="0.02 0.02 0.04" material="accent_mat" contype="0" conaffinity="0"/>
+      <geom class="chassis" type="box" pos=" 0.20 -0.14 0" size="0.02 0.02 0.04" material="accent_mat" contype="0" conaffinity="0"/>
+      <geom class="chassis" type="box" pos="-0.20  0.14 0" size="0.02 0.02 0.04" material="accent_mat" contype="0" conaffinity="0"/>
+      <geom class="chassis" type="box" pos="-0.20 -0.14 0" size="0.02 0.02 0.04" material="accent_mat" contype="0" conaffinity="0"/>
+
+      <!-- Front-mounted RealSense stand-in. Camera frame: MuJoCo cameras look
+           down their local -Z. To make the camera look along chassis +X with
+           +Y to its left, rotate the camera body so local -Z aligns with
+           chassis +X and local +Y with chassis +Z. The euler below does that. -->
+      <body name="base_camera_mount" pos="0.20 0 0.02" euler="-1.5707 0 -1.5707">
+        <inertial pos="0 0 0" mass="0.005" diaginertia="1e-6 1e-6 1e-6"/>
+        <camera name="base_camera" fovy="58" resolution="640 480" mode="fixed"/>
+      </body>
+
+      <!-- Lidar mast (visual marker). The actual ray casting in
+           base101_mujoco/lidar_bridge.py samples around lidar_frame from /tf,
+           not from this site, so the position here is purely cosmetic. -->
+      <geom class="chassis" type="cylinder" pos="-0.16 -0.02 0.07"
+            size="0.035 0.030" rgba="0.05 0.05 0.05 1"
+            contype="0" conaffinity="0"/>
+
+      <!-- Wheels.
+           Body euler="1.5707 0 0" rotates the wheel so its cylinder axis (local
+           Z) aligns with chassis +Y, making it roll along chassis X. Hinge axis
+           "0 0 1" in body-local = chassis +Y, matching the URDF convention. -->
+      <body name="wheel_front_left_body" pos=" 0.110  0.1443 -0.04" euler="1.5707 0 0">
+        <inertial pos="0 0 0" mass="0.216"
+                  diaginertia="0.00015 0.00015 0.00020"/>
+        <joint name="wheel_front_left" type="hinge" axis="0 0 1" damping="0.005"/>
+        <geom class="wheel" size="0.0363 0.012"/>
+      </body>
+
+      <body name="wheel_front_right_body" pos=" 0.110 -0.1443 -0.04" euler="1.5707 0 0">
+        <inertial pos="0 0 0" mass="0.216"
+                  diaginertia="0.00015 0.00015 0.00020"/>
+        <joint name="wheel_front_right" type="hinge" axis="0 0 1" damping="0.005"/>
+        <geom class="wheel" size="0.0363 0.012"/>
+      </body>
+
+      <body name="wheel_rear_left_body" pos="-0.110  0.1443 -0.04" euler="1.5707 0 0">
+        <inertial pos="0 0 0" mass="0.216"
+                  diaginertia="0.00015 0.00015 0.00020"/>
+        <joint name="wheel_rear_left" type="hinge" axis="0 0 1" damping="0.005"/>
+        <geom class="wheel" size="0.0363 0.012"/>
+      </body>
+
+      <body name="wheel_rear_right_body" pos="-0.110 -0.1443 -0.04" euler="1.5707 0 0">
+        <inertial pos="0 0 0" mass="0.216"
+                  diaginertia="0.00015 0.00015 0.00020"/>
+        <joint name="wheel_rear_right" type="hinge" axis="0 0 1" damping="0.005"/>
+        <geom class="wheel" size="0.0363 0.012"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>

@@ -14,10 +14,10 @@ def _launch_setup(context, *args, **kwargs):
     variant = LaunchConfiguration('variant').perform(context)
 
     xacro_file = os.path.join(share_dir, 'urdf', 'base101.xacro')
-    # display is rviz-only — skip the sim ros2_control + gazebo extensions
-    # so robot_state_publisher sees a pure URDF.
+    # display is rviz-only — skip the per-sim ros2_control + extensions so
+    # robot_state_publisher sees a pure URDF.
     robot_urdf = xacro.process_file(
-        xacro_file, mappings={'variant': variant, 'use_sim': 'false'}
+        xacro_file, mappings={'variant': variant, 'simulator': 'none'}
     ).toxml()
 
     rviz_config_file = os.path.join(share_dir, 'config', 'display.rviz')

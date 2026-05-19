@@ -59,15 +59,15 @@
   <self_collide>true</self_collide>
 </gazebo>
 
-<gazebo reference="head_camera_1">
+<gazebo reference="base_camera">
   <material>${silver_color}</material>
   <mu1>0.2</mu1>
   <mu2>0.2</mu2>
   <self_collide>true</self_collide>
 
-  <sensor name="head_camera" type="camera">
-    <topic>head_camera/image_raw</topic>
-    <gz_frame_id>head_camera_1</gz_frame_id>
+  <sensor name="base_camera" type="camera">
+    <topic>base_camera/image_raw</topic>
+    <gz_frame_id>base_camera</gz_frame_id>
     <update_rate>30</update_rate>
     <always_on>1</always_on>
     <visualize>true</visualize>

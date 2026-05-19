@@ -64,7 +64,7 @@
   </collision>
 </link>
 
-<link name="head_camera_1">
+<link name="base_camera">
   <inertial>
     <origin xyz="0.012450337454890298 -0.021387631051719317 -2.7969539088602835e-05" rpy="0 0 0"/>
     <mass value="0.35928853728306875"/>
@@ -73,14 +73,14 @@
   <visual>
     <origin xyz="-0.17 -0.0225 -0.043" rpy="0 0 0"/>
     <geometry>
-      <mesh filename="file://$(find base101_description)/meshes/pro/head_camera_1.stl" scale="0.001 0.001 0.001"/>
+      <mesh filename="file://$(find base101_description)/meshes/pro/base_camera.stl" scale="0.001 0.001 0.001"/>
     </geometry>
     <material name="silver"/>
   </visual>
   <collision>
     <origin xyz="-0.17 -0.0225 -0.043" rpy="0 0 0"/>
     <geometry>
-      <mesh filename="file://$(find base101_description)/meshes/pro/head_camera_1.stl" scale="0.001 0.001 0.001"/>
+      <mesh filename="file://$(find base101_description)/meshes/pro/base_camera.stl" scale="0.001 0.001 0.001"/>
     </geometry>
   </collision>
 </link>
@@ -457,7 +457,7 @@
 <joint name="Rigid 33" type="fixed">
   <origin xyz="0.0 -0.0775 0.04" rpy="0 0 0"/>
   <parent link="box_front_1"/>
-  <child link="head_camera_1"/>
+  <child link="base_camera"/>
 </joint>
 
 <joint name="wheel_front_right" type="continuous">

@@ -1,0 +1,113 @@
+<?xml version="1.0" ?>
+<!--
+  base101 PRO-variant MuJoCo scene.
+
+  Same chassis as the simple variant; wheels swapped for DDSM115 hubs:
+    wheel_separation = 0.38 m    (half-track = 0.19)
+    wheel_radius     = 0.05035 m (100.7 mm DDSM115 hub)
+  Matches base101_control/config/controllers.pro.sim.yaml.
+-->
+<mujoco model="base101_pro">
+  <compiler angle="radian"/>
+
+  <option timestep="0.001" gravity="0 0 -9.81"/>
+
+  <visual>
+    <headlight ambient="0.55 0.55 0.55" diffuse="0.4 0.4 0.4" specular="0.1 0.1 0.1"/>
+    <map znear="0.01"/>
+    <global offwidth="640" offheight="480"/>
+  </visual>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker"
+             rgb1="0.85 0.85 0.85" rgb2="0.95 0.95 0.95"
+             width="512" height="512"/>
+    <material name="grid_mat" texture="grid" texrepeat="20 20" reflectance="0.0"/>
+    <material name="chassis_mat" rgba="0.72 0.72 0.74 1"/>
+    <material name="wheel_mat"   rgba="0.08 0.08 0.08 1"/>
+    <material name="accent_mat"  rgba="0.20 0.65 0.30 1"/>
+  </asset>
+
+  <default>
+    <default class="world">
+      <geom group="0" contype="1" conaffinity="1"/>
+    </default>
+    <default class="chassis">
+      <geom group="1" contype="2" conaffinity="1"/>
+    </default>
+    <default class="wheel">
+      <geom group="1" type="cylinder" contype="2" conaffinity="1"
+            friction="1.0 0.005 0.0001" material="wheel_mat"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <light name="overhead" pos="0 0 4" dir="0 0 -1" diffuse="0.7 0.7 0.7"/>
+    <light name="sun"      pos="3 3 6" dir="-0.3 -0.3 -1" diffuse="0.4 0.4 0.4"/>
+
+    <geom class="world" name="floor" type="plane"
+          size="20 20 0.1" material="grid_mat"/>
+
+    <geom class="world" name="ref_box_front" type="box"
+          pos="2.0 0 0.25" size="0.20 0.20 0.25"
+          rgba="0.2 0.5 0.9 1"/>
+    <geom class="world" name="ref_box_left" type="box"
+          pos="0 1.5 0.15" size="0.15 0.15 0.15"
+          rgba="0.9 0.4 0.2 1"/>
+    <geom class="world" name="ref_box_right" type="box"
+          pos="0.6 -1.2 0.20" size="0.18 0.18 0.20"
+          rgba="0.7 0.7 0.2 1"/>
+
+    <body name="base_link" pos="0 0 0.105" euler="0 0 0">
+      <freejoint name="base_free"/>
+      <!-- PRO is heavier: same chassis CoG but ~2.2 kg gross (motors + brackets). -->
+      <inertial pos="0.004 -0.008 0.012" mass="2.20"
+                diaginertia="0.012 0.024 0.034"/>
+      <geom class="chassis" type="box"
+            size="0.20 0.14 0.04" material="chassis_mat"/>
+
+      <geom class="chassis" type="box" pos=" 0.20  0.14 0" size="0.02 0.02 0.04" material="accent_mat" contype="0" conaffinity="0"/>
+      <geom class="chassis" type="box" pos=" 0.20 -0.14 0" size="0.02 0.02 0.04" material="accent_mat" contype="0" conaffinity="0"/>
+      <geom class="chassis" type="box" pos="-0.20  0.14 0" size="0.02 0.02 0.04" material="accent_mat" contype="0" conaffinity="0"/>
+      <geom class="chassis" type="box" pos="-0.20 -0.14 0" size="0.02 0.02 0.04" material="accent_mat" contype="0" conaffinity="0"/>
+
+      <body name="base_camera_mount" pos="0.20 0 0.02" euler="-1.5707 0 -1.5707">
+        <inertial pos="0 0 0" mass="0.005" diaginertia="1e-6 1e-6 1e-6"/>
+        <camera name="base_camera" fovy="58" resolution="640 480" mode="fixed"/>
+      </body>
+
+      <geom class="chassis" type="cylinder" pos="-0.16 -0.02 0.07"
+            size="0.035 0.030" rgba="0.05 0.05 0.05 1"
+            contype="0" conaffinity="0"/>
+
+      <!-- PRO wheels: 100.7 mm dia, wider track, heavier hub motors. -->
+      <body name="wheel_front_left_body" pos=" 0.140  0.190 -0.04" euler="1.5707 0 0">
+        <inertial pos="0 0 0" mass="0.765"
+                  diaginertia="0.00075 0.00075 0.00110"/>
+        <joint name="wheel_front_left" type="hinge" axis="0 0 1" damping="0.020"/>
+        <geom class="wheel" size="0.05035 0.020"/>
+      </body>
+
+      <body name="wheel_front_right_body" pos=" 0.140 -0.190 -0.04" euler="1.5707 0 0">
+        <inertial pos="0 0 0" mass="0.765"
+                  diaginertia="0.00075 0.00075 0.00110"/>
+        <joint name="wheel_front_right" type="hinge" axis="0 0 1" damping="0.020"/>
+        <geom class="wheel" size="0.05035 0.020"/>
+      </body>
+
+      <body name="wheel_rear_left_body" pos="-0.140  0.190 -0.04" euler="1.5707 0 0">
+        <inertial pos="0 0 0" mass="0.765"
+                  diaginertia="0.00075 0.00075 0.00110"/>
+        <joint name="wheel_rear_left" type="hinge" axis="0 0 1" damping="0.020"/>
+        <geom class="wheel" size="0.05035 0.020"/>
+      </body>
+
+      <body name="wheel_rear_right_body" pos="-0.140 -0.190 -0.04" euler="1.5707 0 0">
+        <inertial pos="0 0 0" mass="0.765"
+                  diaginertia="0.00075 0.00075 0.00110"/>
+        <joint name="wheel_rear_right" type="hinge" axis="0 0 1" damping="0.020"/>
+        <geom class="wheel" size="0.05035 0.020"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>

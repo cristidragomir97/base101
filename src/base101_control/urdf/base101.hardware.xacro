@@ -3,11 +3,11 @@
 
   <xacro:arg name="variant" default="simple"/>
 
-  <!-- Force-disable the sim ros2_control + gazebo extensions so this URDF is
+  <!-- Force-disable the sim ros2_control + per-sim extensions so this URDF is
        safe to load on real hardware. Xacro takes the first <xacro:arg> for a
-       given name, so declaring use_sim here before the include overrides the
-       description's default of true. -->
-  <xacro:arg name="use_sim" default="false"/>
+       given name, so declaring simulator=none here before the include
+       overrides the description's default. -->
+  <xacro:arg name="simulator" default="none"/>
   <xacro:include filename="$(find base101_description)/urdf/base101.xacro"/>
 
   <!-- =================================================================

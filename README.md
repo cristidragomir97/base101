@@ -76,10 +76,13 @@ ROS 2 Jazzy workspace. The `diff_drive_controller` handles skid-steer kinematics
 
 | Package | Type | Purpose |
 |---|---|---|
-| `base101_description` | ament_python | Unified URDF (simple/pro selectable via xacro arg), meshes, RViz config. |
+| `base101_description` | ament_python | Unified URDF (simple/pro + simulator selector via xacro args), meshes, RViz config. |
 | `base101_control` | ament_cmake | `diff_drive_controller` + `twist_mux` config, hardware bringup launch. |
 | `base101_gazebo` | ament_cmake | Gazebo Sim worlds, launch, ros↔gz bridge. |
+| `base101_mujoco` | ament_python | MuJoCo scenes, `mujoco_ros2_control` launch, companion lidar ray-cast bridge. |
+| `base101_isaac` | ament_python | NVIDIA Isaac Sim runner + launch. Imports the URDF, wires the OmniGraph ROS2 bridge. |
 | `base101_nav` | ament_cmake | Nav2 + slam_toolbox + frontier exploration. Configs, launches, RViz preset. |
+| `base101_mcp` | ament_python | Generic ROS2 ↔ MCP (Model Context Protocol) bridge. Lets Claude (or any MCP client) discover topics/services and read/publish messages over natural language. Requires `pip install "fastmcp>=2,<3"`. |
 | `base101_teleop_web` | ament_python | Browser-based virtual joystick → `/cmd_vel_joy`. |
 | `rosboard` | ament_python | Vendored web dashboard (publishes a Teleop card too). |
 
@@ -93,6 +96,36 @@ ros2 launch base101_gazebo gazebo.launch.py variant:=pro world:=empty.sdf
 ```
 
 Web teleop is at `http://localhost:8888/` (rosboard) once the sim is up.
+
+### Simulators
+
+The same robot URDF runs in three simulators. A `simulator` xacro arg
+(`gazebo|mujoco|isaac|none`) selects the ros2_control hardware plugin and
+any sim-specific URDF extensions. All three publish the same
+`/cmd_vel_*`, `/odom`, `/scan`, `/joint_states`, and
+`/base_camera/image_raw` topics, so Nav2/SLAM/exploration are oblivious to
+which one is running.
+
+```bash
+ros2 launch base101_gazebo gazebo.launch.py variant:=simple  # default, recommended
+ros2 launch base101_mujoco mujoco.launch.py variant:=simple
+ros2 launch base101_isaac  isaac.launch.py  variant:=simple
+```
+
+| | Gazebo | MuJoCo | Isaac Sim |
+|---|---|---|---|
+| Physics | DART / Bullet-Featherstone | MuJoCo (Featherstone) | PhysX 5 |
+| World format | SDF | MJCF | USD |
+| ros2_control plugin | `gz_ros2_control/GazeboSimSystem` | `mujoco_ros2_control/MujocoSystem` | None — OmniGraph drives joints natively |
+| Lidar | `<gpu_lidar>` + `ros_gz_bridge` | `base101_mujoco` companion node (parallel mjData + `mj_multiRay`) | RTX lidar + `ROS2RtxLidarHelper` |
+| Camera | Native + `ros_gz_image` | `mujoco_cameras.cpp` (built into `mujoco_ros2_control`) | USD camera + `ROS2CameraHelper` |
+| Maturity | Production | Joints + cameras production; lidar via companion node | Experimental — Isaac 6.x early-dev |
+
+**Install + dependencies.** See [`SIMULATORS.md`](SIMULATORS.md) for the
+full setup guide for each backend (apt packages, pip installs, build
+flags, common gotchas). Per-package details and the rationale behind
+each integration live in the package READMEs: [`base101_gazebo`](src/base101_gazebo/README.md),
+[`base101_mujoco`](src/base101_mujoco/README.md), [`base101_isaac`](src/base101_isaac/README.md).
 
 ### Navigation, SLAM, and Exploration
 
@@ -127,6 +160,8 @@ Runtime deps not in apt: `explore_lite` is pulled in via `vcs import src < base1
 - [x] Suspension design (PLA-CF adaptation)
 - [x] URDF/xacro
 - [x] Gazebo simulation
+- [x] MuJoCo simulation
+- [x] Isaac Sim simulation
 - [x] ros2_control integration
 - [x] Nav2 + SLAM + frontier exploration
 - [ ] E-stop handle mechanism

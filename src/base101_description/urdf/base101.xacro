@@ -3,16 +3,25 @@
 
   <xacro:arg name="variant" default="simple"/>
 
-  <!-- When true, the URDF pulls in the Gazebo ros2_control plugin and per-link
-       gazebo extensions. Hardware launches (base101_control) override to false. -->
-  <xacro:arg name="use_sim" default="true"/>
+  <!-- Which simulator the URDF is being prepared for. Selects the
+       ros2_control hardware plugin and any sim-specific extension tags.
+       Use `none` for real-hardware bringup (handled in base101_control). -->
+  <xacro:arg name="simulator" default="gazebo"/>
 
   <xacro:include filename="$(find base101_description)/urdf/materials.xacro"/>
   <xacro:include filename="$(find base101_description)/urdf/base101_$(arg variant).xacro"/>
 
-  <xacro:if value="$(arg use_sim)">
-    <xacro:include filename="$(find base101_description)/urdf/base101.ros2control"/>
+  <xacro:if value="${'$(arg simulator)' == 'gazebo'}">
+    <xacro:include filename="$(find base101_description)/urdf/base101.gazebo.ros2control"/>
     <xacro:include filename="$(find base101_description)/urdf/base101_$(arg variant).gazebo"/>
   </xacro:if>
+
+  <xacro:if value="${'$(arg simulator)' == 'mujoco'}">
+    <xacro:include filename="$(find base101_description)/urdf/base101.mujoco.ros2control"/>
+  </xacro:if>
+
+  <!-- simulator=isaac: drives joints natively from base101_isaac, no
+       ros2_control block. simulator=none: real-hardware ros2_control is
+       included from base101_control. -->
 
 </robot>

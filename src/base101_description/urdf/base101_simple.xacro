@@ -65,7 +65,7 @@
   </collision>
 </link>
 
-<link name="head_camera_1">
+<link name="base_camera">
   <inertial>
     <origin xyz="0.012450796675630954 -0.021387754754905838 -2.7865943366574275e-05" rpy="0 0 0"/>
     <!-- DEBUG: zeroed-out to test CoG bias on rotation pivot -->
@@ -75,14 +75,14 @@
   <visual>
     <origin xyz="-0.174675 -0.014363 -0.050149" rpy="0 0 0"/>
     <geometry>
-      <mesh filename="file://$(find base101_description)/meshes/simple/head_camera_1.stl" scale="0.001 0.001 0.001"/>
+      <mesh filename="file://$(find base101_description)/meshes/simple/base_camera.stl" scale="0.001 0.001 0.001"/>
     </geometry>
     <material name="silver"/>
   </visual>
   <collision>
     <origin xyz="-0.174675 -0.014363 -0.050149" rpy="0 0 0"/>
     <geometry>
-      <mesh filename="file://$(find base101_description)/meshes/simple/head_camera_1.stl" scale="0.001 0.001 0.001"/>
+      <mesh filename="file://$(find base101_description)/meshes/simple/base_camera.stl" scale="0.001 0.001 0.001"/>
     </geometry>
   </collision>
 </link>
@@ -543,7 +543,7 @@
 <joint name="Rigid 33" type="fixed">
   <origin xyz="0.0 -0.0775 0.04" rpy="0 0 0"/>
   <parent link="box_front_1"/>
-  <child link="head_camera_1"/>
+  <child link="base_camera"/>
 </joint>
 
 <joint name="Rigid 51" type="fixed">

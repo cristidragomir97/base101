@@ -65,7 +65,7 @@ def _setup(context, *args, **kwargs):
     bridge_config = os.path.join(pkg_gazebo, 'config', 'gz_ros_bridge.yaml')
 
     robot_description = xacro.process_file(
-        urdf_file, mappings={'variant': variant, 'use_sim': 'true'}
+        urdf_file, mappings={'variant': variant, 'simulator': 'gazebo'}
     ).toxml()
 
     robot_state_publisher = Node(
@@ -102,11 +102,11 @@ def _setup(context, *args, **kwargs):
         output='screen',
     )
 
-    head_camera_image_bridge = Node(
+    base_camera_image_bridge = Node(
         package='ros_gz_image',
         executable='image_bridge',
-        name='head_camera_image_bridge',
-        arguments=['/head_camera/image_raw'],
+        name='base_camera_image_bridge',
+        arguments=['/base_camera/image_raw'],
         parameters=[{'use_sim_time': True}],
         output='screen',
     )
@@ -183,7 +183,7 @@ def _setup(context, *args, **kwargs):
         gz_sim,
         clock_bridge,
         bridge,
-        head_camera_image_bridge,
+        base_camera_image_bridge,
         twist_mux,
         spawn_robot,
         after_spawn,
