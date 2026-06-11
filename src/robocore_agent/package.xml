@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>robocore_agent</name>
+  <version>0.1.0</version>
+  <description>
+    The robocore agent: a robot-agnostic ROS2 node that exposes the robot
+    over JSON-RPC/WebSocket to the pure-Python robocore client SDK.
+    Contains zero robot-specific code; robot specifics arrive via profile
+    YAML only.
+  </description>
+  <maintainer email="cristidragomir97@gmail.com">Cristi Dragomir</maintainer>
+  <license>MIT</license>
+
+  <depend>rclpy</depend>
+  <exec_depend>python3-websockets</exec_depend>
+  <exec_depend>python3-pydantic</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <!-- Also requires the `robocore` pip package (the engine/ directory of
+       this monorepo): pip install -e <repo>/engine -->
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
