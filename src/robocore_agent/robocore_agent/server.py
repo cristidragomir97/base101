@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 import websockets
 
 from robocore import wire
+from robocore.aio.transport import MAX_MESSAGE_BYTES
 
 if TYPE_CHECKING:
     from .context import AgentContext
@@ -96,14 +97,18 @@ class AgentServer:
 
     async def start(self) -> None:
         """Bind the listeners. Raises OSError if a bind fails."""
+        # max_size must match the client transport's MAX_MESSAGE_BYTES;
+        # websockets' 1 MiB default aborts connections on big payloads.
         if self._port is not None:
             self._servers.append(
-                await websockets.serve(self._handle, self._host, self._port)
+                await websockets.serve(self._handle, self._host, self._port,
+                                       max_size=MAX_MESSAGE_BYTES)
             )
             log.info("listening on ws://%s:%s", self._host, self._port)
         if self._unix_path is not None:
             self._servers.append(
-                await websockets.unix_serve(self._handle, self._unix_path)
+                await websockets.unix_serve(self._handle, self._unix_path,
+                                            max_size=MAX_MESSAGE_BYTES)
             )
             log.info("listening on unix://%s", self._unix_path)
 

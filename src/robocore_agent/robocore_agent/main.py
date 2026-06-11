@@ -30,7 +30,9 @@ log = logging.getLogger("robocore_agent")
 # Production deployments should serve the client SDK's default,
 # /run/robocore.sock (via systemd RuntimeDirectory). /tmp works unprivileged.
 DEFAULT_SOCKET = "/tmp/robocore.sock"
-DEFAULT_PORT = 7447
+# 10101 (Cristi, 2026-06-11): 7447 collides with zenoh's TCP default and
+# the DDS UDP port range. Must match robocore.uri.DEFAULT_PORT.
+DEFAULT_PORT = 10101
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
