@@ -19,7 +19,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from robocore.models import Hello, Welcome
+from robocore.models import Hello, Point, Pose, Transform, Welcome
 from robocore.version import PROTOCOL_VERSION
 
 from .context import AgentContext
@@ -28,6 +28,22 @@ from .tasks import TaskHandle
 
 # debug.send_payload is test plumbing, not robot data; keep it small.
 _MAX_DEBUG_PAYLOAD = 16 * 1024 * 1024
+
+
+def _require_ros(ctx: AgentContext) -> Any:
+    """Handlers that touch the robot need the ROS interface."""
+    if ctx.ros is None:
+        raise RpcError("RobocoreError",
+                       "agent is running without a ROS interface (test mode)")
+    return ctx.ros
+
+
+def _require_teleop(ctx: AgentContext) -> Any:
+    """Teleop handlers need the manager (absent without ROS)."""
+    if ctx.teleop is None:
+        raise RpcError("RobocoreError",
+                       "agent is running without a ROS interface (test mode)")
+    return ctx.teleop
 
 
 def build_registry(ctx: AgentContext) -> dict[str, Handler]:
@@ -88,6 +104,103 @@ def build_registry(ctx: AgentContext) -> dict[str, Handler]:
         session.audit_subscribed = False
         return {}
 
+    # -- mobility state / TF (Phase 3) ----------------------------------------------
+
+    async def mobility_get_state(session: Session,
+                                 params: dict[str, Any]) -> Any:
+        ros = _require_ros(ctx)
+        try:
+            return await asyncio.to_thread(ros.get_state)
+        except Exception as exc:
+            raise RpcError("RobocoreError", str(exc)) from exc
+
+    async def tf_lookup(session: Session, params: dict[str, Any]) -> Any:
+        ros = _require_ros(ctx)
+        try:
+            return await asyncio.to_thread(
+                ros.tf_lookup,
+                str(params["parent"]), str(params["child"]),
+                float(params.get("timeout", 2.0)),
+            )
+        except KeyError as exc:
+            raise RpcError("RobocoreError", f"missing param {exc}") from exc
+        except Exception as exc:
+            raise RpcError("TimeoutError", str(exc)) from exc
+
+    async def tf_frames(session: Session, params: dict[str, Any]) -> Any:
+        ros = _require_ros(ctx)
+        return {"frames": await asyncio.to_thread(ros.tf_frames)}
+
+    async def tf_wait_for(session: Session, params: dict[str, Any]) -> Any:
+        ros = _require_ros(ctx)
+        try:
+            await asyncio.to_thread(
+                ros.tf_wait_for, str(params["frame"]),
+                float(params.get("timeout", 5.0)),
+            )
+        except Exception as exc:
+            raise RpcError("TimeoutError", str(exc)) from exc
+        return {}
+
+    async def tf_transform(session: Session, params: dict[str, Any]) -> Any:
+        # Re-express a Pose or Point in another frame: one TF lookup, then
+        # the shared spatial math. kind selects the entity type.
+        ros = _require_ros(ctx)
+        kind = params.get("kind")
+        if kind not in ("pose", "point"):
+            raise RpcError("RobocoreError", "kind must be 'pose' or 'point'")
+        model = Pose if kind == "pose" else Point
+        try:
+            entity = model.model_validate(params["entity"])
+        except (KeyError, ValidationError) as exc:
+            raise RpcError("RobocoreError", f"bad entity: {exc}") from exc
+        try:
+            raw = await asyncio.to_thread(
+                ros.tf_lookup, str(params["to_frame"]), entity.frame,
+                float(params.get("timeout", 2.0)),
+            )
+        except Exception as exc:
+            raise RpcError("TimeoutError", str(exc)) from exc
+        transform = Transform.model_validate(raw)
+        if kind == "point":
+            moved = transform.apply(entity)
+        else:
+            x, y, z = transform.rotation.rotate(entity.x, entity.y, entity.z)
+            moved = Pose(
+                x=x + transform.translation.x,
+                y=y + transform.translation.y,
+                z=z + transform.translation.z,
+                q=transform.rotation.multiply(entity.q),
+                frame=transform.parent,
+            )
+        return {"entity": moved.model_dump(mode="json")}
+
+    # -- teleop (Phase 3) --------------------------------------------------------------
+
+    async def teleop_start(session: Session, params: dict[str, Any]) -> Any:
+        teleop = _require_teleop(ctx)
+        granted = teleop.start(
+            session.client_id, float(params.get("watchdog", 0.5)))
+        return {"watchdog": granted}
+
+    async def teleop_drive(session: Session, params: dict[str, Any]) -> Any:
+        teleop = _require_teleop(ctx)
+        teleop.drive(
+            session.client_id,
+            linear=float(params.get("linear", 0.0)),
+            angular=float(params.get("angular", 0.0)),
+            lateral=float(params.get("lateral", 0.0)),
+        )
+        return {}
+
+    async def teleop_stop(session: Session, params: dict[str, Any]) -> Any:
+        _require_teleop(ctx).stop(session.client_id)
+        return {}
+
+    async def teleop_end(session: Session, params: dict[str, Any]) -> Any:
+        _require_teleop(ctx).end(session.client_id)
+        return {}
+
     # -- mobility (Phase 2 stub) ---------------------------------------------------
 
     async def navigate_to(session: Session, params: dict[str, Any]) -> Any:
@@ -133,6 +246,8 @@ def build_registry(ctx: AgentContext) -> dict[str, Handler]:
         if not isinstance(engaged, bool):
             raise RpcError("RobocoreError", "engaged must be a bool")
         ctx.state.estop_engaged = engaged
+        if engaged and ctx.teleop is not None:
+            ctx.teleop.zero_all()  # halt now, not at the next watchdog tick
         ctx.audit.record("estop", client=session.client_id,
                          outcome="engaged" if engaged else "released")
         return {"engaged": engaged}
@@ -170,7 +285,18 @@ def build_registry(ctx: AgentContext) -> dict[str, Handler]:
         "debug.send_payload": debug_send_payload,
         "debug.set_estop": debug_set_estop,
         "debug.run_task": debug_run_task,
+        # TF is not capability-gated: every ROS robot has a TF tree.
+        "tf.lookup": tf_lookup,
+        "tf.frames": tf_frames,
+        "tf.wait_for": tf_wait_for,
+        "tf.transform": tf_transform,
     }
     if "mobility" in profile.info.capabilities:
         registry["mobility.navigate_to"] = navigate_to
+        registry["mobility.get_state"] = mobility_get_state
+    if "teleop" in profile.info.capabilities:
+        registry["teleop.start"] = teleop_start
+        registry["teleop.drive"] = teleop_drive
+        registry["teleop.stop"] = teleop_stop
+        registry["teleop.end"] = teleop_end
     return registry

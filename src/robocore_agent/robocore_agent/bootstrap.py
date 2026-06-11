@@ -7,6 +7,7 @@ in-process, minus rclpy).
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from .audit import AuditLog
 from .context import AgentContext
@@ -15,6 +16,7 @@ from .profile import Profile
 from .safety import AgentState, MotionLock, SafetyLayer
 from .server import AgentServer
 from .tasks import TaskManager
+from .teleop import TeleopManager
 
 
 def build_agent(
@@ -24,17 +26,22 @@ def build_agent(
     host: str | None = None,
     port: int | None = None,
     audit_dir: str | Path | None = None,
+    ros: Any = None,
 ) -> tuple[AgentServer, AgentContext]:
     """Assemble audit + safety + tasks + handlers + server for one profile.
 
     ``audit_dir`` overrides the profile's audit directory (tests use a tmp
-    dir). Call ``await server.start()`` on the returned server; call
-    ``ctx.audit.close()`` after shutdown.
+    dir). ``ros`` is the RosInterface (main.py) or a fake (tests); None
+    runs the protocol stack without a robot. Call ``await server.start()``
+    on the returned server; call ``ctx.audit.close()`` after shutdown.
     """
     audit = AuditLog(profile.info.name, profile.spec.audit,
                      directory=audit_dir)
     state = AgentState()
     lock = MotionLock()
+    teleop = None
+    if "teleop" in profile.info.capabilities and ros is not None:
+        teleop = TeleopManager(lock, audit, ros, profile)
     ctx = AgentContext(
         profile=profile,
         audit=audit,
@@ -42,6 +49,8 @@ def build_agent(
         safety=SafetyLayer(state, lock),
         state=state,
         lock=lock,
+        ros=ros,
+        teleop=teleop,
     )
     server = AgentServer(
         registry=build_registry(ctx),

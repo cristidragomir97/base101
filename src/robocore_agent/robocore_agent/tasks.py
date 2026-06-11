@@ -139,6 +139,17 @@ class TaskManager:
         except Exception:
             pass  # owner disconnected; task continues, audit has the trail
 
+    def cancel_for_session(self, session: Session) -> int:
+        """Cancel every running task owned by one client (the
+        stop_on_disconnect path). Returns how many were cancelled."""
+        cancelled = 0
+        for record in list(self._tasks.values()):
+            if (record.session is session and record.aio_task is not None
+                    and not record.aio_task.done()):
+                record.aio_task.cancel()
+                cancelled += 1
+        return cancelled
+
     async def cancel_all(self) -> None:
         """Shutdown helper: cancel everything still running."""
         for record in list(self._tasks.values()):

@@ -20,10 +20,12 @@ import sys
 import threading
 
 import rclpy
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 
 from .bootstrap import build_agent
 from .profile import ProfileError, load_profile
+from .ros import RosInterface
 
 log = logging.getLogger("robocore_agent")
 
@@ -92,12 +94,18 @@ def main(argv: list[str] | None = None) -> int:
         os.unlink(unix_path)  # stale socket from an unclean previous exit
     port = None if args.port == 0 else args.port
 
-    rclpy.init()
+    # Pass the raw argv through so --ros-args (e.g. -p use_sim_time:=true,
+    # required when running against Gazebo) reaches the node.
+    rclpy.init(args=sys.argv[1:] if argv is None else argv)
     node = Node("robocore_agent")
-    # Phase 1: the node exists but observes nothing yet. Spinning it in a
-    # daemon thread keeps the asyncio server as the main thread's loop.
+    ros = RosInterface(node, profile)
+    # ROS spins on a background MultiThreadedExecutor; the asyncio server
+    # owns the main thread. Handlers reach ROS only through RosInterface,
+    # whose blocking methods they call via asyncio.to_thread.
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
     spin_thread = threading.Thread(
-        target=rclpy.spin, args=(node,), name="rclpy-spin", daemon=True
+        target=executor.spin, name="ros-executor", daemon=True
     )
     spin_thread.start()
 
@@ -107,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
         host=args.host,
         port=port,
         audit_dir=args.audit_dir,
+        ros=ros,
     )
     exit_code = 0
     try:
@@ -116,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
         exit_code = 1
     finally:
         ctx.audit.close()
+        executor.shutdown(timeout_sec=2.0)
         node.destroy_node()
         with contextlib.suppress(Exception):
             rclpy.shutdown()

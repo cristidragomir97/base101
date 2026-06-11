@@ -17,6 +17,14 @@ twist_mux:
         topic:    /cmd_vel_nav
         timeout:  0.5
         priority: 10
+      # robocore agent (teleop/direct velocity). Above navigation so agent
+      # teleop overrides autonomous motion, below joystick/keyboard so a
+      # local operator always wins. The agent's own safety layer (watchdog,
+      # clamps, e-stop) sits upstream of this topic.
+      agent:
+        topic:    /cmd_vel_agent
+        timeout:  0.5
+        priority: 50
       joystick:
         topic:    /cmd_vel_joy
         timeout:  0.5

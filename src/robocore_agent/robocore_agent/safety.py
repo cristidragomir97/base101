@@ -14,8 +14,12 @@ from .server import RpcError
 
 # Wire methods that move the robot. Grows each phase; a method missing from
 # this set runs without safety checks, so additions are part of review.
+# Note teleop.start is motion-classed too: it takes the motion lock, and an
+# engaged e-stop must reject the whole session, not just each drive.
 MOTION_METHODS = frozenset({
     "mobility.navigate_to",
+    "teleop.start",
+    "teleop.drive",
 })
 
 

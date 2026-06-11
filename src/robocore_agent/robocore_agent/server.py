@@ -140,7 +140,17 @@ class AgentServer:
             pass
         finally:
             self._sessions.discard(session)
-            # A vanished client must not leave the robot motion-locked.
+            # A vanished client must not leave the robot moving or locked.
+            if self._ctx.teleop is not None:
+                self._ctx.teleop.on_disconnect(session.client_id)
+            if self._ctx.profile.spec.safety.stop_on_disconnect:
+                cancelled = self._ctx.tasks.cancel_for_session(session)
+                if cancelled:
+                    self._ctx.audit.record(
+                        "safety", client=session.client_id,
+                        outcome=f"stop_on_disconnect: cancelled {cancelled} "
+                                "running task(s)",
+                    )
             if self._ctx.lock.release(session.client_id):
                 log.info("released motion lock of client %d",
                          session.client_id)
