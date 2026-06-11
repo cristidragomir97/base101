@@ -1,0 +1,53 @@
+"""Wires a loaded profile into a ready-to-start AgentServer.
+
+Used by main.py and by the engine's tests (which run the same stack
+in-process, minus rclpy).
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from .audit import AuditLog
+from .context import AgentContext
+from .handlers import build_registry
+from .profile import Profile
+from .safety import AgentState, MotionLock, SafetyLayer
+from .server import AgentServer
+from .tasks import TaskManager
+
+
+def build_agent(
+    profile: Profile,
+    *,
+    unix_path: str | None,
+    host: str | None = None,
+    port: int | None = None,
+    audit_dir: str | Path | None = None,
+) -> tuple[AgentServer, AgentContext]:
+    """Assemble audit + safety + tasks + handlers + server for one profile.
+
+    ``audit_dir`` overrides the profile's audit directory (tests use a tmp
+    dir). Call ``await server.start()`` on the returned server; call
+    ``ctx.audit.close()`` after shutdown.
+    """
+    audit = AuditLog(profile.info.name, profile.spec.audit,
+                     directory=audit_dir)
+    state = AgentState()
+    lock = MotionLock()
+    ctx = AgentContext(
+        profile=profile,
+        audit=audit,
+        tasks=TaskManager(audit),
+        safety=SafetyLayer(state, lock),
+        state=state,
+        lock=lock,
+    )
+    server = AgentServer(
+        registry=build_registry(ctx),
+        ctx=ctx,
+        unix_path=unix_path,
+        host=host,
+        port=port,
+    )
+    return server, ctx

@@ -22,9 +22,8 @@ import threading
 import rclpy
 from rclpy.node import Node
 
-from .handlers import build_registry
+from .bootstrap import build_agent
 from .profile import ProfileError, load_profile
-from .server import AgentServer
 
 log = logging.getLogger("robocore_agent")
 
@@ -48,6 +47,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
                         help="TCP bind address (default 0.0.0.0)")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT,
                         help=f"TCP port (default {DEFAULT_PORT}; 0 disables)")
+    parser.add_argument("--audit-dir", default=None,
+                        help="override the audit log directory "
+                             "(default: profile audit.dir or "
+                             "~/.robocore/audit/<robot-name>)")
     # ros2 run appends --ros-args; tolerate and ignore unknown trailing args.
     args, _unknown = parser.parse_known_args(argv)
     return args
@@ -96,12 +99,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     spin_thread.start()
 
-    server = AgentServer(
-        registry=build_registry(profile),
-        robot_name=profile.info.name,
+    server, ctx = build_agent(
+        profile,
         unix_path=unix_path,
         host=args.host,
         port=port,
+        audit_dir=args.audit_dir,
     )
     exit_code = 0
     try:
@@ -110,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         log.error("cannot bind listener: %s", exc)
         exit_code = 1
     finally:
+        ctx.audit.close()
         node.destroy_node()
         with contextlib.suppress(Exception):
             rclpy.shutdown()

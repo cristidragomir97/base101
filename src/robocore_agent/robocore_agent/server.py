@@ -1,9 +1,12 @@
 """The agent's WebSocket JSON-RPC server.
 
 Serves the same protocol on a unix socket (local clients) and TCP (remote
-clients) from one asyncio loop. Pure transport: method behavior lives in
-handlers.py; this module never imports rclpy so it stays unit-testable
-without a ROS environment.
+clients) from one asyncio loop. Pure transport plus the two chokepoints
+the spec demands of it (sections 18 and 21): every request is audited, and
+motion-classed methods pass the safety layer before their handler runs.
+
+Method behavior lives in handlers.py; this module never imports rclpy so
+the whole wire stack stays unit-testable without a ROS environment.
 
 Failure modes: a malformed frame gets a JSON-RPC parse/invalid-request
 error back; an unknown method gets method-not-found; a handler exception
@@ -16,11 +19,14 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
-from typing import Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 import websockets
 
 from robocore import wire
+
+if TYPE_CHECKING:
+    from .context import AgentContext
 
 log = logging.getLogger("robocore_agent.server")
 
@@ -41,7 +47,7 @@ class RpcError(Exception):
 
 class Session:
     """One connected client. Handlers receive this to send payloads and to
-    check/flip handshake state."""
+    check/flip per-connection state (handshake, audit subscription)."""
 
     _ids = itertools.count(1)
 
@@ -49,6 +55,7 @@ class Session:
         self.websocket = websocket
         self.client_id = next(self._ids)
         self.handshaken = False
+        self.audit_subscribed = False
         self._payload_ids = itertools.count(1)
 
     async def send_payload(self, kind: str, meta: dict[str, Any],
@@ -70,7 +77,7 @@ class AgentServer:
     def __init__(
         self,
         registry: dict[str, Handler],
-        robot_name: str,
+        ctx: "AgentContext",
         unix_path: str | None,
         host: str | None,
         port: int | None,
@@ -78,11 +85,14 @@ class AgentServer:
         if unix_path is None and port is None:
             raise ValueError("need at least one of unix_path / port")
         self._registry = registry
-        self._robot_name = robot_name
+        self._ctx = ctx
+        self._robot_name = ctx.profile.info.name
         self._unix_path = unix_path
         self._host = host or "0.0.0.0"
         self._port = port
         self._servers: list[Any] = []
+        self._sessions: set[Session] = set()
+        ctx.audit.subscribers.append(self._fan_out_audit_event)
 
     async def start(self) -> None:
         """Bind the listeners. Raises OSError if a bind fails."""
@@ -98,6 +108,7 @@ class AgentServer:
             log.info("listening on unix://%s", self._unix_path)
 
     async def close(self) -> None:
+        await self._ctx.tasks.cancel_all()
         for server in self._servers:
             server.close()
             await server.wait_closed()
@@ -107,7 +118,9 @@ class AgentServer:
 
     async def _handle(self, websocket: Any) -> None:
         session = Session(websocket)
-        log.info("client %d connected", session.client_id)
+        self._sessions.add(session)
+        self._ctx.audit.record("connection", client=session.client_id,
+                               outcome="connected")
         try:
             async for message in websocket:
                 if isinstance(message, bytes):
@@ -121,7 +134,13 @@ class AgentServer:
         except websockets.ConnectionClosed:
             pass
         finally:
-            log.info("client %d disconnected", session.client_id)
+            self._sessions.discard(session)
+            # A vanished client must not leave the robot motion-locked.
+            if self._ctx.lock.release(session.client_id):
+                log.info("released motion lock of client %d",
+                         session.client_id)
+            self._ctx.audit.record("connection", client=session.client_id,
+                                   outcome="disconnected")
 
     async def _dispatch(self, session: Session, text: str) -> str | None:
         try:
@@ -155,9 +174,26 @@ class AgentServer:
             )
 
         params = msg.get("params") or {}
+        audit = self._ctx.audit
+        audit.record("command", client=session.client_id, call=method,
+                     detail={"params": params})
+        try:
+            self._ctx.safety.check(session.client_id, method)
+        except RpcError as exc:
+            audit.record("safety", client=session.client_id, call=method,
+                         outcome="rejected",
+                         detail={"reason": exc.extra.get("reason"),
+                                 "message": str(exc)})
+            data = self._error_data(exc.error_type, method, request_id)
+            data.update(exc.extra)
+            return wire.error_response(
+                request_id, wire.ERR_APPLICATION, str(exc), data
+            )
         try:
             result = await handler(session, params)
         except RpcError as exc:
+            audit.record("result", client=session.client_id, call=method,
+                         outcome=f"error: {exc}")
             data = self._error_data(exc.error_type, method, request_id)
             data.update(exc.extra)
             return wire.error_response(
@@ -165,12 +201,39 @@ class AgentServer:
             )
         except Exception as exc:  # handler bug: report, don't kill the link
             log.exception("handler %s failed", method)
+            audit.record("result", client=session.client_id, call=method,
+                         outcome=f"error: internal: {exc}")
             return wire.error_response(
                 request_id, wire.ERR_APPLICATION,
                 f"internal error in {method}: {exc}",
                 self._error_data("RobocoreError", method, request_id),
             )
+        audit.record("result", client=session.client_id, call=method,
+                     outcome="success")
         return wire.response(request_id, result)
+
+    # -- audit tail fan-out ------------------------------------------------------
+
+    def _fan_out_audit_event(self, event: Any) -> None:
+        """AuditLog subscriber: push audit.event to subscribed sessions.
+
+        Called synchronously from record() on the server's loop; the sends
+        are scheduled, never awaited, so a slow client cannot stall
+        dispatch.
+        """
+        subscribed = [s for s in self._sessions if s.audit_subscribed]
+        if not subscribed:
+            return
+        text = wire.notification("audit.event", event.model_dump(mode="json"))
+        for session in subscribed:
+            asyncio.ensure_future(self._send_quietly(session, text))
+
+    @staticmethod
+    async def _send_quietly(session: Session, text: str) -> None:
+        try:
+            await session.websocket.send(text)
+        except Exception:
+            pass  # client gone; the disconnect path cleans up
 
     def _error_data(self, error_type: str, call: str,
                     request_id: int | str | None) -> dict[str, Any]:

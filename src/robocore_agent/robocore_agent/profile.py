@@ -1,42 +1,21 @@
-"""Robot profile loading (Phase 1 stub).
+"""Robot profile loading and validation.
 
 A profile is a YAML file mapping capabilities to a robot's ROS interfaces
-(spec section 22). Phase 1 only needs enough to produce a capability
-report: the identity fields plus which capability sections are present.
-Full schema validation and per-capability config land in Phase 2.
+(spec section 22). The schema is the shared pydantic model
+robocore.models.profile.RobotProfile — single source of truth; this module
+only adds file IO and agent-protocol checks.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
-from robocore.models import ProfileInfo
+from robocore.models import ProfileInfo, RobotProfile
 from robocore.version import PROTOCOL_VERSION
-
-# Capability registry, spec section 4. A profile section with one of these
-# names declares that capability. Order here is the report order.
-KNOWN_CAPABILITIES = (
-    "mobility",
-    "manipulation",
-    "joint_groups",
-    "cameras",
-    "lidar",
-    "slam",
-    "exploration",
-    "gps",
-    "teleop",
-    "control",
-    "watches",
-    "places",
-    "audit",
-    "status",
-)
-
-REQUIRED_KEYS = ("name", "model", "protocol", "frames")
 
 
 class ProfileError(Exception):
@@ -45,19 +24,22 @@ class ProfileError(Exception):
 
 @dataclass(frozen=True)
 class Profile:
-    """A loaded profile: handshake metadata plus the raw section dicts."""
+    """A loaded profile: validated spec + handshake metadata."""
 
+    spec: RobotProfile
     info: ProfileInfo
-    frames: dict[str, str]
-    raw: dict[str, Any]
+
+    @property
+    def instances(self) -> dict[str, tuple[str, ...]]:
+        return self.spec.instances
 
 
 def load_profile(path: str | Path) -> Profile:
-    """Load and minimally validate a profile YAML.
+    """Load and validate a profile YAML.
 
-    Raises ProfileError if the file is unreadable, lacks a required key
-    (name, model, protocol, frames), or targets a different protocol
-    version than this agent speaks.
+    Raises ProfileError if the file is unreadable, fails schema validation
+    (including unknown top-level sections — typos must not silently disable
+    a capability), or targets a protocol version this agent does not speak.
     """
     path = Path(path)
     try:
@@ -67,22 +49,20 @@ def load_profile(path: str | Path) -> Profile:
     if not isinstance(data, dict):
         raise ProfileError(f"profile {path} is not a YAML mapping")
 
-    missing = [key for key in REQUIRED_KEYS if key not in data]
-    if missing:
-        raise ProfileError(f"profile {path} missing keys: {missing}")
-    if data["protocol"] != PROTOCOL_VERSION:
+    try:
+        spec = RobotProfile.model_validate(data)
+    except ValidationError as exc:
+        raise ProfileError(f"profile {path} is invalid:\n{exc}") from exc
+    if spec.protocol != PROTOCOL_VERSION:
         raise ProfileError(
-            f"profile {path} targets protocol {data['protocol']}, "
+            f"profile {path} targets protocol {spec.protocol}, "
             f"agent speaks {PROTOCOL_VERSION}"
         )
 
-    capabilities = tuple(
-        name for name in KNOWN_CAPABILITIES if data.get(name) is not None
-    )
     info = ProfileInfo(
-        name=str(data["name"]),
-        version=str(data.get("version", "0")),
-        model=str(data["model"]),
-        capabilities=capabilities,
+        name=spec.name,
+        version=spec.version,
+        model=spec.model,
+        capabilities=spec.capabilities,
     )
-    return Profile(info=info, frames=dict(data["frames"]), raw=data)
+    return Profile(spec=spec, info=info)
