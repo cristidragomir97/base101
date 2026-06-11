@@ -8,12 +8,31 @@
        Use `none` for real-hardware bringup (handled in base101_control). -->
   <xacro:arg name="simulator" default="gazebo"/>
 
+  <!-- Cross tower add-on: column with prismatic lift + pan/tilt head. -->
+  <xacro:arg name="tower" default="false"/>
+
+  <!-- Dual mod101 arms on the tower's crossbeam brackets. Requires
+       tower:=true and the mod101 workspace sourced as an underlay. -->
+  <xacro:arg name="arms" default="false"/>
+  <xacro:arg name="arm_tool" default="jaws"/>
+
   <xacro:include filename="$(find base101_description)/urdf/materials.xacro"/>
   <xacro:include filename="$(find base101_description)/urdf/base101_$(arg variant).xacro"/>
+
+  <xacro:if value="$(arg tower)">
+    <xacro:include filename="$(find base101_description)/urdf/base101_tower.xacro"/>
+  </xacro:if>
+
+  <xacro:if value="$(arg arms)">
+    <xacro:include filename="$(find base101_description)/urdf/base101_arms.xacro"/>
+  </xacro:if>
 
   <xacro:if value="${'$(arg simulator)' == 'gazebo'}">
     <xacro:include filename="$(find base101_description)/urdf/base101.gazebo.ros2control"/>
     <xacro:include filename="$(find base101_description)/urdf/base101_$(arg variant).gazebo"/>
+    <xacro:if value="$(arg tower)">
+      <xacro:include filename="$(find base101_description)/urdf/base101_tower.gazebo"/>
+    </xacro:if>
   </xacro:if>
 
   <xacro:if value="${'$(arg simulator)' == 'mujoco'}">

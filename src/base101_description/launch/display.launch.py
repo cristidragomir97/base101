@@ -12,12 +12,17 @@ from launch_ros.actions import Node
 def _launch_setup(context, *args, **kwargs):
     share_dir = get_package_share_directory('base101_description')
     variant = LaunchConfiguration('variant').perform(context)
+    tower = LaunchConfiguration('tower').perform(context)
+    arms = LaunchConfiguration('arms').perform(context)
+    arm_tool = LaunchConfiguration('arm_tool').perform(context)
 
     xacro_file = os.path.join(share_dir, 'urdf', 'base101.xacro')
     # display is rviz-only — skip the per-sim ros2_control + extensions so
     # robot_state_publisher sees a pure URDF.
     robot_urdf = xacro.process_file(
-        xacro_file, mappings={'variant': variant, 'simulator': 'none'}
+        xacro_file, mappings={'variant': variant, 'simulator': 'none',
+                              'tower': tower, 'arms': arms,
+                              'arm_tool': arm_tool}
     ).toxml()
 
     rviz_config_file = os.path.join(share_dir, 'config', 'display.rviz')
@@ -59,6 +64,24 @@ def generate_launch_description():
             default_value='simple',
             choices=['simple', 'pro'],
             description='Which base101 hardware variant to load (simple or pro).',
+        ),
+        DeclareLaunchArgument(
+            'tower',
+            default_value='false',
+            choices=['true', 'false'],
+            description='Include the cross tower (lift column + pan/tilt head).',
+        ),
+        DeclareLaunchArgument(
+            'arms',
+            default_value='false',
+            choices=['true', 'false'],
+            description='Mount two mod101 arms on the tower crossbeam '
+                        '(requires tower:=true and the mod101 underlay).',
+        ),
+        DeclareLaunchArgument(
+            'arm_tool',
+            default_value='jaws',
+            description='mod101 end-effector for both arms.',
         ),
         DeclareLaunchArgument(
             'gui',

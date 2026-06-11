@@ -37,6 +37,9 @@ def _setup(context, *args, **kwargs):
     variant = LaunchConfiguration('variant').perform(context)
     world = LaunchConfiguration('world').perform(context)
     rosboard_port = LaunchConfiguration('rosboard_port').perform(context)
+    tower = LaunchConfiguration('tower').perform(context) == 'true'
+    arms = LaunchConfiguration('arms').perform(context) == 'true'
+    arm_tool = LaunchConfiguration('arm_tool').perform(context)
 
     pkg_description = get_package_share_directory('base101_description')
     pkg_control     = get_package_share_directory('base101_control')
@@ -51,6 +54,13 @@ def _setup(context, *args, **kwargs):
         os.path.join(get_package_prefix('base101_description'), 'share'),
         os.path.join(get_package_prefix('base101_control'), 'share'),
     ]
+    if arms:
+        # The mod101 tool meshes use package:// URIs, so Gazebo needs the
+        # mod101 underlay's share dirs on the resource path.
+        resource_dirs += [
+            os.path.join(get_package_prefix('mod101_description'), 'share'),
+            os.path.join(get_package_prefix(f'mod101_tool_{arm_tool}'), 'share'),
+        ]
     if os.environ.get('GZ_SIM_RESOURCE_PATH'):
         resource_dirs.append(os.environ['GZ_SIM_RESOURCE_PATH'])
     gz_resource_path = SetEnvironmentVariable(
@@ -65,7 +75,13 @@ def _setup(context, *args, **kwargs):
     bridge_config = os.path.join(pkg_gazebo, 'config', 'gz_ros_bridge.yaml')
 
     robot_description = xacro.process_file(
-        urdf_file, mappings={'variant': variant, 'simulator': 'gazebo'}
+        urdf_file, mappings={
+            'variant': variant,
+            'simulator': 'gazebo',
+            'tower': str(tower).lower(),
+            'arms': str(arms).lower(),
+            'arm_tool': arm_tool,
+        }
     ).toxml()
 
     robot_state_publisher = Node(
@@ -166,6 +182,28 @@ def _setup(context, *args, **kwargs):
         output='screen',
     )
 
+    post_jsb_spawners = [spawn_diff_drive]
+    if tower:
+        post_jsb_spawners.append(Node(
+            package='controller_manager',
+            executable='spawner',
+            arguments=['tower_controller',
+                       '--controller-manager', '/controller_manager'],
+            output='screen',
+        ))
+    if arms:
+        arm_controllers = ['left_arm_controller', 'right_arm_controller']
+        # mod101_tool_none has no gripper joint; every other tool exposes
+        # joint <prefix>6 (see controllers.arms.yaml).
+        if arm_tool != 'none':
+            arm_controllers += ['left_gripper_controller', 'right_gripper_controller']
+        post_jsb_spawners += [Node(
+            package='controller_manager',
+            executable='spawner',
+            arguments=[name, '--controller-manager', '/controller_manager'],
+            output='screen',
+        ) for name in arm_controllers]
+
     # Controllers must wait until the robot is spawned (which is when the
     # gz_ros2_control plugin creates the controller_manager).
     after_spawn = RegisterEventHandler(OnProcessExit(
@@ -174,10 +212,10 @@ def _setup(context, *args, **kwargs):
     ))
     after_jsb = RegisterEventHandler(OnProcessExit(
         target_action=spawn_jsb,
-        on_exit=[spawn_diff_drive],
+        on_exit=post_jsb_spawners,
     ))
 
-    return [
+    actions = [
         gz_resource_path,
         robot_state_publisher,
         gz_sim,
@@ -191,6 +229,28 @@ def _setup(context, *args, **kwargs):
         rosboard,
     ]
 
+    if tower:
+        actions.append(Node(
+            package='ros_gz_image',
+            executable='image_bridge',
+            name='head_camera_image_bridge',
+            arguments=['/head_camera/image_raw'],
+            parameters=[{'use_sim_time': True}],
+            output='screen',
+        ))
+
+    if arms:
+        actions += [Node(
+            package='ros_gz_image',
+            executable='image_bridge',
+            name=f'{side}_wrist_camera_image_bridge',
+            arguments=[f'/{side}_arm_wrist_camera/image_raw'],
+            parameters=[{'use_sim_time': True}],
+            output='screen',
+        ) for side in ('left', 'right')]
+
+    return actions
+
 
 def generate_launch_description():
     return LaunchDescription([
@@ -199,6 +259,25 @@ def generate_launch_description():
             default_value='simple',
             choices=['simple', 'pro'],
             description='base101 hardware variant (simple or pro).',
+        ),
+        DeclareLaunchArgument(
+            'tower',
+            default_value='false',
+            choices=['true', 'false'],
+            description='Include the cross tower (lift column + pan/tilt head).',
+        ),
+        DeclareLaunchArgument(
+            'arms',
+            default_value='false',
+            choices=['true', 'false'],
+            description='Mount two mod101 arms on the tower crossbeam '
+                        '(requires tower:=true and the mod101 underlay).',
+        ),
+        DeclareLaunchArgument(
+            'arm_tool',
+            default_value='jaws',
+            description='mod101 end-effector for both arms '
+                        '(mod101_tool_<name> package).',
         ),
         DeclareLaunchArgument(
             'world',

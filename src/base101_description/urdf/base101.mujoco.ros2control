@@ -29,6 +29,26 @@
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
+
+    <!-- Cross tower joints. NOTE: only valid once the matching joints exist
+         in the base101_mujoco scene XML for the chosen variant. -->
+    <xacro:if value="$(arg tower)">
+      <joint name="lift">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="head_pan">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="head_tilt">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+    </xacro:if>
   </ros2_control>
 
 </robot>

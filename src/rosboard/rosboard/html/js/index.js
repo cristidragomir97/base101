@@ -17,6 +17,7 @@ importJsOnce("js/viewers/PointCloud2Viewer.js");
 importJsOnce("js/viewers/ImuViewer.js");
 importJsOnce("js/viewers/JointStateViewer.js");
 importJsOnce("js/viewers/TwistPublisherViewer.js");
+importJsOnce("js/viewers/JointCommandViewer.js");
 
 // GenericViewer must be last
 importJsOnce("js/viewers/GenericViewer.js");
@@ -65,6 +66,7 @@ function updateStoredSubscriptions() {
     for(let topicName in subscriptions) {
       storedSubscriptions[topicName] = {
         topicType: subscriptions[topicName].topicType,
+        viewerName: subscriptions[topicName].viewerName,
       };
     }
     window.localStorage['subscriptions'] = JSON.stringify(storedSubscriptions);
@@ -95,7 +97,9 @@ let onOpen = function() {
   
   for(let topic_name in subscriptions) {
     console.log("Re-subscribing to " + topic_name);
-    initSubscribe({topicName: topic_name, topicType: subscriptions[topic_name].topicType});
+    initSubscribe({topicName: topic_name,
+                   topicType: subscriptions[topic_name].topicType,
+                   viewerName: subscriptions[topic_name].viewerName});
   }
 
 
@@ -180,6 +184,20 @@ let onTopics = function(topics) {
   }); })
   .text("Teleop")
   .appendTo($("#topics-nav-system"));
+
+  // Joint sliders card: subscribes /joint_states for live positions and
+  // publishes std_msgs/Float64MultiArray position commands to the base101
+  // controller topics (tower, both arms, both grippers) — one panel for
+  // every controlled joint. Groups whose hardware isn't loaded are hidden.
+  $('<a></a>')
+  .addClass("mdl-navigation__link")
+  .click(() => { initSubscribe({
+    topicName: "/joint_states",
+    topicType: "sensor_msgs/msg/JointState",
+    viewerName: "JointCommandViewer",
+  }); })
+  .text("Joint sliders")
+  .appendTo($("#topics-nav-system"));
 }
 
 function addTopicTreeToNav(topicTree, el, level = 0, path = "") {
@@ -255,21 +273,38 @@ function initPublishCard({topicName, topicType, viewerType}) {
   $grid.masonry("layout");
 }
 
-function initSubscribe({topicName, topicType}) {
+function initSubscribe({topicName, topicType, viewerName}) {
   console.log( "Subscribing to " + topicName + " of type " + topicType);
   // creates a subscriber for topicName
   // and also initializes a viewer (if it doesn't already exist)
   // in advance of arrival of the first data
   // this way the user gets a snappy UI response because the viewer appears immediately
+  //
+  // viewerName (optional): class name of a specific Viewer to use instead of
+  // the type's default — e.g. the "Joint sliders" nav entry opens
+  // /joint_states with JointCommandViewer. Persisted with the subscription so
+  // the same card comes back on reload. If a card already exists for the
+  // topic with a different viewer, it gets replaced.
   if(!subscriptions[topicName]) {
     subscriptions[topicName] = {
       topicType: topicType,
     }
-  }  
+  }
+  if(viewerName) subscriptions[topicName].viewerName = viewerName;
   currentTransport.subscribe({topicName: topicName});
+  let requested = subscriptions[topicName].viewerName ?
+    Viewer._viewers.find(v => v.name === subscriptions[topicName].viewerName) : null;
+  if(subscriptions[topicName].viewer && requested &&
+     !(subscriptions[topicName].viewer instanceof requested)) {
+    // viewer switch: drop the old card, fall through to create the new one
+    let old = subscriptions[topicName].viewer;
+    subscriptions[topicName].viewer = null;
+    try { old.destroy(); } catch(e) {}
+    try { $grid.masonry("remove", old.card); $grid.masonry("layout"); } catch(e) {}
+  }
   if(!subscriptions[topicName].viewer) {
     let card = newCard();
-    let viewer = Viewer.getDefaultViewerForType(topicType);
+    let viewer = requested || Viewer.getDefaultViewerForType(topicType);
     try {
       subscriptions[topicName].viewer = new viewer(card, topicName, topicType);
     } catch(e) {

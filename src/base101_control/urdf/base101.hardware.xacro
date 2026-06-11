@@ -2,6 +2,7 @@
 <robot name="base101" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <xacro:arg name="variant" default="simple"/>
+  <xacro:arg name="tower" default="false"/>
 
   <!-- Force-disable the sim ros2_control + per-sim extensions so this URDF is
        safe to load on real hardware. Xacro takes the first <xacro:arg> for a
@@ -43,6 +44,26 @@
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
+
+    <!-- Cross tower joints (lift column + pan/tilt head). Like the wheels,
+         mock components until the real actuator drivers land. -->
+    <xacro:if value="$(arg tower)">
+      <joint name="lift">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="head_pan">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="head_tilt">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+    </xacro:if>
   </ros2_control>
 
 </robot>

@@ -22,6 +22,7 @@ from launch_ros.substitutions import FindPackageShare
 
 def _setup(context, *args, **kwargs):
     variant = LaunchConfiguration('variant').perform(context)
+    tower = LaunchConfiguration('tower').perform(context)
 
     controllers_cfg = PathJoinSubstitution([
         FindPackageShare('base101_control'), 'config', 'controllers.hw.yaml',
@@ -34,11 +35,23 @@ def _setup(context, *args, **kwargs):
     ])
 
     robot_description = ParameterValue(
-        Command(['xacro ', hardware_xacro, ' variant:=', variant, ' simulator:=none']),
+        Command(['xacro ', hardware_xacro, ' variant:=', variant,
+                 ' simulator:=none', ' tower:=', tower]),
         value_type=str,
     )
 
-    return [
+    tower_spawner = [] if tower != 'true' else [TimerAction(
+        period=7.0,
+        actions=[Node(
+            package='controller_manager',
+            executable='spawner',
+            arguments=['tower_controller',
+                       '--controller-manager', '/controller_manager'],
+            output='screen',
+        )],
+    )]
+
+    return tower_spawner + [
         Node(
             package='robot_state_publisher',
             executable='robot_state_publisher',
@@ -96,6 +109,12 @@ def generate_launch_description():
             default_value='simple',
             choices=['simple', 'pro'],
             description='base101 hardware variant (simple or pro).',
+        ),
+        DeclareLaunchArgument(
+            'tower',
+            default_value='false',
+            choices=['true', 'false'],
+            description='Include the cross tower (lift column + pan/tilt head).',
         ),
         OpaqueFunction(function=_setup),
     ])

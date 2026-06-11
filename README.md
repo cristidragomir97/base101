@@ -83,8 +83,8 @@ ROS 2 Jazzy workspace. The `diff_drive_controller` handles skid-steer kinematics
 | `base101_isaac` | ament_python | NVIDIA Isaac Sim runner + launch. Imports the URDF, wires the OmniGraph ROS2 bridge. |
 | `base101_nav` | ament_cmake | Nav2 + slam_toolbox + frontier exploration. Configs, launches, RViz preset. |
 | `base101_mcp` | ament_python | Generic ROS2 ↔ MCP (Model Context Protocol) bridge. Lets Claude (or any MCP client) discover topics/services and read/publish messages over natural language. Requires `pip install "fastmcp>=2,<3"`. |
-| `base101_teleop_web` | ament_python | Browser-based virtual joystick → `/cmd_vel_joy`. |
-| `rosboard` | ament_python | Vendored web dashboard (publishes a Teleop card too). |
+| `base101_teleop` | ament_python | Standalone single-page web teleop (base + every joint) on `:8700`. Fallback for the rosboard Joint sliders card. |
+| `rosboard` | ament_python | Vendored web dashboard. Carries two publisher cards: **Teleop** (Twist) and **Joint sliders** (Float64MultiArray position commands for tower + arms). |
 
 ### Quickstart
 
@@ -96,6 +96,109 @@ ros2 launch base101_gazebo gazebo.launch.py variant:=pro world:=empty.sdf
 ```
 
 Web teleop is at `http://localhost:8888/` (rosboard) once the sim is up.
+
+### Cross tower (optional)
+
+An optional vertical tower (merged from the former `base101_cross_description`
+CAD export) bolts onto the top plate: a column with a prismatic **lift**
+carrying a crossbeam with two arm-mount brackets, and a **pan/tilt head**
+with a camera on top. Enable it with `tower:=true` — it works on both
+variants and in RViz, Gazebo, and the hardware overlay:
+
+```bash
+ros2 launch base101_gazebo gazebo.launch.py tower:=true
+ros2 launch base101_description display.launch.py tower:=true
+```
+
+| Joint | Type | Range | Notes |
+|---|---|---|---|
+| `lift` | prismatic | ±0.26 m | Axis points **down**: `+0.26` = bottom of stroke, `-0.26` = top, `0` = mid-travel. Effort limit 400 N — sized for the fully loaded carriage (crossbeam + brackets + two arms). |
+| `head_pan` | continuous | — | `+` = CCW/left (REP-103 yaw). Axis re-anchored on the pan motor shaft (the CAD export had it ~15 cm off). |
+| `head_tilt` | continuous | — | `+y` axis. |
+
+All three are position-controlled by **`tower_controller`**
+(`position_controllers/JointGroupPositionController`, spawned automatically
+when `tower:=true`):
+
+```bash
+ros2 topic pub /tower_controller/commands std_msgs/msg/Float64MultiArray \
+  "{data: [0.0, 0.0, 0.0]}"   # [lift, head_pan, head_tilt]
+```
+
+The head camera publishes `/head_camera/image_raw` (bridged like the base
+camera). The tower URDF lives in `base101_description/urdf/base101_tower.xacro`
+(+ `.gazebo`), meshes in `meshes/tower/`; the attachment point is variant-aware
+because the simple and pro CAD exports use different top-plate frames. The
+`left_arm_bracket_1` / `right_arm_bracket_1` links on the crossbeam are the
+mount points for two mod101 arms — see the next section. Full merge/debug
+notes: [`docs/worklogs/tower.md`](docs/worklogs/tower.md).
+
+### Dual mod101 arms (optional, `arms:=true`)
+
+Two [mod101](https://github.com/robocore-dev/mod101) arms mount on the
+tower's crossbeam brackets. The mod101 repo stays standalone — its arm is a
+prefix-parameterised xacro macro (`mod101_arm`, see
+`mod101_description/urdf/mod101_macro.xacro`) that this repo instantiates
+twice in `base101_description/urdf/base101_arms.xacro`, producing joints
+`left_arm_1…6` and `right_arm_1…6`.
+
+**Build** (mod101 first, then this workspace as an overlay — only needed
+when you actually use `arms:=true`):
+
+```bash
+cd ~/Work/mod101  && colcon build --symlink-install && source install/setup.bash
+cd ~/Work/base101
+colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
+source install/setup.bash
+```
+
+(The `Python3_EXECUTABLE` pin guards against a stray non-system python on
+`PATH` breaking ament's package.xml parsing and `rosidl`'s `em` import. The
+`mod101_description` exec_depend in `base101_description` is not a rosdep
+key — pass `--skip-keys mod101_description` to `rosdep install` if you use
+it.)
+
+**Launch:**
+
+```bash
+ros2 launch base101_gazebo gazebo.launch.py tower:=true arms:=true            # jaws grippers
+ros2 launch base101_gazebo gazebo.launch.py tower:=true arms:=true arm_tool:=parallel
+ros2 launch base101_description display.launch.py tower:=true arms:=true     # rviz only
+```
+
+**Controllers** (all `position_controllers/JointGroupPositionController`,
+commands are `std_msgs/Float64MultiArray` on `/<name>/commands`):
+
+| Controller | Joints |
+|---|---|
+| `tower_controller` | `lift, head_pan, head_tilt` |
+| `left_arm_controller` / `right_arm_controller` | `<side>_arm_1 … _5` |
+| `left_gripper_controller` / `right_gripper_controller` | `<side>_arm_6` |
+| `diff_drive_controller` | wheels (via `twist_mux`) |
+
+Each arm's wrist camera is bridged as `/<side>_arm_wrist_camera/image_raw`.
+Integration notes (mount-point measurement, the lift-effort and arm-yaw
+fixes, the stale-`robot_state_publisher` gotcha):
+[`docs/worklogs/dual_arm.md`](docs/worklogs/dual_arm.md).
+
+### Teleop
+
+Two ways to drive everything from a browser:
+
+- **rosboard "Joint sliders" card** (recommended): open rosboard
+  (`http://localhost:8888/`), pick **Joint sliders** in the System nav. One
+  panel with a position slider for every controlled joint — lift, pan/tilt
+  head, both arms, both grippers — initialised from the live robot pose,
+  with live position readouts and a re-sync button. Groups whose hardware
+  isn't loaded hide automatically; the card persists across reloads. Base
+  driving stays on the separate **Teleop** card. (Backed by rosboard's
+  `MSG_PUB` channel; `std_msgs/Float64MultiArray` is allowlisted and —
+  unlike Twist — deliberately *not* zeroed by the publish watchdog, so
+  position commands hold when the browser goes quiet.)
+- **`base101_teleop`** — a zero-dependency standalone fallback:
+  `ros2 run base101_teleop server` → `http://localhost:8700/`. Same sliders
+  plus a hold-to-drive base pad. See
+  [`src/base101_teleop/README.md`](src/base101_teleop/README.md).
 
 ### Simulators
 
@@ -164,9 +267,11 @@ Runtime deps not in apt: `explore_lite` is pulled in via `vcs import src < base1
 - [x] Isaac Sim simulation
 - [x] ros2_control integration
 - [x] Nav2 + SLAM + frontier exploration
+- [x] Cross tower (prismatic lift + pan/tilt head, `tower:=true`)
+- [x] Combined base101 + dual mod101 system launch (`arms:=true`)
+- [x] Web teleop for all joints (rosboard Joint sliders + `base101_teleop`)
 - [ ] E-stop handle mechanism
 - [ ] CNC top plate manufacturing files (DXF)
-- [ ] Combined base101 + mod101 system launch
 
 ## Related Projects
 

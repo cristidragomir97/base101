@@ -16,6 +16,15 @@ controller_manager:
     diff_drive_controller:
       type: diff_drive_controller/DiffDriveController
 
+    # Cross tower (lift column + pan/tilt head). Only spawned when the URDF
+    # is built with tower:=true — see control_stack.launch.py.
+    tower_controller:
+      type: position_controllers/JointGroupPositionController
+
+tower_controller:
+  ros__parameters:
+    joints: [lift, head_pan, head_tilt]
+
 diff_drive_controller:
   ros__parameters:
     left_wheel_names:  ['wheel_front_left',  'wheel_rear_left']

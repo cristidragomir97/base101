@@ -1,0 +1,128 @@
+<?xml version="1.0" ?>
+<robot name="base101_tower" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+<!-- Gazebo extensions for the cross tower add-on. Included from base101.xacro
+     when simulator==gazebo and tower:=true. -->
+
+<xacro:property name="tower_silver" value="Gazebo/Silver" />
+<xacro:property name="tower_black" value="Gazebo/Black" />
+<xacro:property name="tower_grey" value="Gazebo/Grey" />
+<xacro:property name="tower_green" value="Gazebo/Green" />
+
+<gazebo reference="column_1">
+  <material>${tower_black}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+
+<!-- self_collide off on the lift carriage chain: the mount/connector slide
+     along (and overlap) the column, and resolving those contacts makes the
+     prismatic joint fight the physics engine. -->
+<gazebo reference="column_mount_1">
+  <material>${tower_green}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+
+<gazebo reference="connector_1">
+  <material>${tower_green}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+
+<gazebo reference="crossbeam_1">
+  <material>${tower_grey}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+
+<gazebo reference="left_arm_bracket_1">
+  <material>${tower_black}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+
+<gazebo reference="right_arm_bracket_1">
+  <material>${tower_black}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+
+<gazebo reference="camera_support_1">
+  <material>${tower_grey}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+
+<gazebo reference="head_camera_1">
+  <material>${tower_grey}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+
+  <!-- Same camera model as base_camera. Sensor looks along the link's +X
+       (robot forward at head_tilt=0); refine pose against hardware. -->
+  <sensor name="head_camera" type="camera">
+    <topic>head_camera/image_raw</topic>
+    <gz_frame_id>head_camera_1</gz_frame_id>
+    <update_rate>30</update_rate>
+    <always_on>1</always_on>
+    <visualize>true</visualize>
+    <camera>
+      <horizontal_fov>1.047</horizontal_fov>
+      <image>
+        <width>640</width>
+        <height>480</height>
+        <format>R8G8B8</format>
+      </image>
+      <clip>
+        <near>0.05</near>
+        <far>20.0</far>
+      </clip>
+    </camera>
+  </sensor>
+</gazebo>
+
+<gazebo reference="head_tilt_1">
+  <material>${tower_black}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+
+<gazebo reference="head_tilt_motor_1">
+  <material>${tower_black}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+
+<gazebo reference="head_pan_thingy_1">
+  <material>${tower_black}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+
+<gazebo reference="head_pan_1">
+  <material>${tower_black}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+
+<gazebo reference="head_pan_camera_1">
+  <material>${tower_silver}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+
+</robot>

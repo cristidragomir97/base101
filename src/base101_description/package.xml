@@ -20,6 +20,10 @@
        instead, mirroring the mod101 / LLMy convention. -->
   <exec_depend>gz_ros2_control</exec_depend>
 
+  <!-- Dual-arm configuration (arms:=true). Resolved from the mod101
+       underlay workspace; not needed for arm-less bringup. -->
+  <exec_depend>mod101_description</exec_depend>
+
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
   <test_depend>python3-pytest</test_depend>

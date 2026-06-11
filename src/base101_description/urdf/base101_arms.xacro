@@ -1,0 +1,36 @@
+<?xml version="1.0" ?>
+<robot name="base101_arms" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+<!-- Dual mod101 arms on the cross tower's crossbeam brackets. Included from
+     base101.xacro when arms:=true (requires tower:=true — the brackets are
+     tower links). mod101 stays a standalone repo: build it first and source
+     its install as an underlay, then build this workspace.
+
+     Joint names become left_arm_1..6 / right_arm_1..6; controllers live in
+     base101_control/config/controllers.arms.yaml. -->
+
+<xacro:include filename="$(find mod101_description)/urdf/mod101_macro.xacro"/>
+
+<!-- The only mod101 material base101's palette doesn't already define
+     (silver / accent_green / motor_black match byte-for-byte). -->
+<material name="body_darkgrey">
+  <color rgba="0.200 0.200 0.200 1.0"/>
+</material>
+
+<!-- Arms only get gz_ros2_control/gazebo extensions in the gazebo sim;
+     mujoco scenes don't model them yet and simulator=none is rviz-only. -->
+<xacro:property name="arms_use_sim" value="${'$(arg simulator)' == 'gazebo'}"/>
+
+<!-- Mount points measured from the bracket meshes: each bracket is an
+     80x120x30 mm slab and the mod101 base plate (80x100 mm) sits centred on
+     its top face — (0, +/-0.06, 0.024) in the bracket frames. Unrotated, the
+     arms' ready stance reaches toward the robot's front (+X); refine against
+     the physical bolt pattern. -->
+<xacro:mod101_arm prefix="left_arm_" parent="left_arm_bracket_1"
+                  xyz="0 0.06 0.024" rpy="0 0 0"
+                  tool="$(arg arm_tool)" use_sim="${arms_use_sim}"/>
+<xacro:mod101_arm prefix="right_arm_" parent="right_arm_bracket_1"
+                  xyz="0 -0.06 0.024" rpy="0 0 0"
+                  tool="$(arg arm_tool)" use_sim="${arms_use_sim}"/>
+
+</robot>

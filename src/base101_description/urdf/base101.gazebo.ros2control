@@ -26,6 +26,26 @@
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
+
+    <!-- Cross tower joints (see base101_tower.xacro), driven by
+         tower_controller in base101_control/config/controllers.*.yaml. -->
+    <xacro:if value="$(arg tower)">
+      <joint name="lift">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="head_pan">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="head_tilt">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+    </xacro:if>
   </ros2_control>
 
 </robot>

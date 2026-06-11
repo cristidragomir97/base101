@@ -47,7 +47,11 @@ class ROSBoardNode(object):
         # The teleop card's topicType (set in index.js) decides which is sent.
         self.publish_allowlist = set(rospy.get_param(
             "~publish_allowlist",
-            ["geometry_msgs/msg/Twist", "geometry_msgs/msg/TwistStamped"],
+            ["geometry_msgs/msg/Twist", "geometry_msgs/msg/TwistStamped",
+             # joint-group position commands from the Joint sliders card.
+             # Deliberately NOT covered by the zero-on-silence watchdog:
+             # position commands must hold, not reset (see zero_payloads).
+             "std_msgs/msg/Float64MultiArray"],
         ))
         # if no client message arrives within this many seconds on a topic the
         # browser has published to, automatically republish a zero message
@@ -539,6 +543,12 @@ class ROSBoardNode(object):
             ts.twist.angular.y = float(ang.get("y", 0.0) or 0.0)
             ts.twist.angular.z = float(ang.get("z", 0.0) or 0.0)
             return ts
+
+        if norm_type == "std_msgs/msg/Float64MultiArray":
+            from std_msgs.msg import Float64MultiArray
+            m = Float64MultiArray()
+            m.data = [float(v) for v in (msg_dict.get("data") or [])]
+            return m
 
         rospy.logwarn("no dict->ros converter registered for %s" % norm_type)
         return None
