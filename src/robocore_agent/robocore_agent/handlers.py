@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import time
 from typing import Any
 
 from pydantic import ValidationError
@@ -630,21 +631,226 @@ def build_registry(ctx: AgentContext) -> dict[str, Handler]:
         _require_teleop(ctx).end(session.client_id)
         return {}
 
-    # -- mobility (Phase 2 stub) ---------------------------------------------------
+    # -- mobility: navigation (Phase 5) -----------------------------------------------
+
+    def _resolve_goal(params: dict[str, Any]) -> dict[str, Any]:
+        """A goal is a wire Pose dict or {"place": name} (spec 17 sugar)."""
+        goal = params.get("goal")
+        if isinstance(goal, dict) and "place" in goal:
+            if ctx.places is None:
+                raise RpcError("RobocoreError",
+                               "profile declares no places capability")
+            return ctx.places.get(str(goal["place"]))
+        if not isinstance(goal, dict):
+            raise RpcError("RobocoreError",
+                           "goal must be a Pose object or {place: name}")
+        try:
+            return Pose.model_validate(goal).model_dump(mode="json")
+        except ValidationError as exc:
+            raise RpcError("RobocoreError", f"bad goal pose: {exc}") from exc
+
+    # Nav2 error_code ranges -> NavigationFailed.reason. bt_navigator
+    # propagates the failing action's code: 2xx = ComputePathToPose
+    # (planning), 1xx = FollowPath (control). Anything else: "aborted".
+    def _nav_reason(error_code: int) -> str:
+        if 200 <= error_code < 300:
+            return "no_path"
+        if 100 <= error_code < 200:
+            return "stuck"
+        return "aborted"
 
     async def navigate_to(session: Session, params: dict[str, Any]) -> Any:
-        # Phase 3/5 replace this body with real Nav2 execution. The safety
-        # layer has already vetted the call (e-stop, motion lock) in
-        # dispatch; what remains always fails, explicitly.
+        ros = _require_ros(ctx)
+        goal = _resolve_goal(params)
+
         async def body(handle: TaskHandle) -> dict[str, Any]:
+            # Housekeeping per the nav restructure: clear both costmaps
+            # before every goal (there is no behavior_server to do it).
+            await asyncio.to_thread(ros.clear_costmaps)
+            try:
+                await asyncio.to_thread(ros.nav_start, goal)
+            except Exception as exc:
+                raise RpcError("NavigationFailed", str(exc),
+                               {"reason": "no_path"}) from exc
+            try:
+                last_report = 0.0
+                while True:
+                    outcome = await asyncio.to_thread(ros.nav_wait, 0.2)
+                    if outcome is not None:
+                        break
+                    now = time.monotonic()
+                    if now - last_report >= 0.25:
+                        last_report = now
+                        feedback = ros.nav_feedback()
+                        if feedback is not None:
+                            await handle.report(data=feedback)
+            except asyncio.CancelledError:
+                await asyncio.to_thread(ros.nav_cancel)
+                raise
+            if outcome["status"] == "succeeded":
+                return {"outcome": "arrived"}
+            if outcome["status"] == "canceled":
+                raise asyncio.CancelledError()
+            reason = _nav_reason(outcome["error_code"])
             raise RpcError(
                 "NavigationFailed",
-                "mobility.navigate_to is not implemented until Phase 3",
-                {"reason": "not_implemented"},
+                outcome["error_msg"] or f"navigation {outcome['status']}",
+                {"reason": reason, "error_code": outcome["error_code"]},
             )
 
         task_id = ctx.tasks.start("mobility.navigate_to", session, body)
         return {"task_id": task_id}
+
+    async def mobility_stop(session: Session, params: dict[str, Any]) -> Any:
+        """Immediate halt: cancel active navigation + zero the velocity.
+        (resume() is dropped per Q3: re-send the goal instead.)"""
+        ros = _require_ros(ctx)
+        cancelled = ctx.tasks.cancel_kind("mobility.")
+        await asyncio.to_thread(ros.nav_cancel)
+        try:
+            ros.publish_zero()
+        except Exception:
+            pass  # no cmd_vel topic in this profile
+        ctx.audit.record("command", client=session.client_id,
+                         call="mobility.stop",
+                         outcome=f"cancelled {cancelled} task(s)")
+        return {"cancelled": cancelled}
+
+    # -- SLAM (Phase 5) ----------------------------------------------------------------
+
+    def _require_slam(ctx: AgentContext) -> Any:
+        if ctx.slam is None:
+            raise RpcError("RobocoreError",
+                           "agent is running without SLAM (test mode "
+                           "or profile lacks slam)")
+        return ctx.slam
+
+    async def slam_get_state(session: Session,
+                             params: dict[str, Any]) -> Any:
+        return _require_slam(ctx).state()
+
+    async def slam_start(session: Session, params: dict[str, Any]) -> Any:
+        slam = _require_slam(ctx)
+        return {"mode": await asyncio.to_thread(slam.start)}
+
+    async def slam_stop(session: Session, params: dict[str, Any]) -> Any:
+        slam = _require_slam(ctx)
+        return {"mode": await asyncio.to_thread(slam.stop)}
+
+    async def slam_save(session: Session, params: dict[str, Any]) -> Any:
+        slam = _require_slam(ctx)
+        name = params.get("name")
+        if not isinstance(name, str):
+            raise RpcError("RobocoreError", "name must be a string")
+        info = await asyncio.to_thread(slam.save, name)
+        ctx.audit.record("command", client=session.client_id,
+                         call="slam.save", outcome=name)
+        return {"info": info}
+
+    async def slam_load(session: Session, params: dict[str, Any]) -> Any:
+        slam = _require_slam(ctx)
+        name = params.get("name")
+        if not isinstance(name, str):
+            raise RpcError("RobocoreError", "name must be a string")
+        await asyncio.to_thread(slam.load, name)
+        return {"mode": slam.mode, "active_map": slam.active_map}
+
+    async def slam_localize(session: Session,
+                            params: dict[str, Any]) -> Any:
+        slam = _require_slam(ctx)
+        pose = params.get("pose")
+        name = params.get("name")
+        await asyncio.to_thread(slam.localize, pose, name)
+        return {"mode": slam.mode, "active_map": slam.active_map}
+
+    async def slam_relocalize(session: Session,
+                              params: dict[str, Any]) -> Any:
+        slam = _require_slam(ctx)
+        await asyncio.to_thread(slam.relocalize)
+        return {"mode": slam.mode}
+
+    async def slam_wait_for_localization(session: Session,
+                                         params: dict[str, Any]) -> Any:
+        slam = _require_slam(ctx)
+        timeout = float(params.get("timeout", 10.0))
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if slam.quality >= 0.5 and not slam.is_lost:
+                return {"localization_quality": slam.quality}
+            await asyncio.sleep(0.1)
+        raise RpcError(
+            "TimeoutError",
+            f"not localized within {timeout}s "
+            f"(quality {slam.quality:.2f})",
+        )
+
+    async def slam_map_info(session: Session,
+                            params: dict[str, Any]) -> Any:
+        slam = _require_slam(ctx)
+        return {"info": slam.map_info(str(params.get("name")))}
+
+    async def slam_delete(session: Session, params: dict[str, Any]) -> Any:
+        slam = _require_slam(ctx)
+        await asyncio.to_thread(slam.delete, str(params.get("name")))
+        return {}
+
+    async def slam_get_map(session: Session, params: dict[str, Any]) -> Any:
+        ros = _require_ros(ctx)
+        try:
+            grid = await asyncio.to_thread(ros.map_grid)
+        except RpcError:
+            raise
+        except Exception as exc:
+            raise RpcError("TimeoutError", str(exc)) from exc
+        data = grid.pop("data")
+        grid["payload"] = _shm_put(data, ttl=30.0)
+        return grid
+
+    # -- named places (Phase 5) ---------------------------------------------------------
+
+    def _require_places(ctx: AgentContext) -> Any:
+        if ctx.places is None:
+            raise RpcError("RobocoreError",
+                           "profile declares no places capability")
+        return ctx.places
+
+    async def places_save(session: Session, params: dict[str, Any]) -> Any:
+        places = _require_places(ctx)
+        name = params.get("name")
+        if not isinstance(name, str):
+            raise RpcError("RobocoreError", "name must be a string")
+        pose = params.get("pose")
+        if pose is None:
+            # spec: save("dock") captures the robot's current pose
+            ros = _require_ros(ctx)
+            try:
+                state = await asyncio.to_thread(ros.get_state)
+            except Exception as exc:
+                raise RpcError("RobocoreError",
+                               f"cannot read current pose: {exc}") from exc
+            pose = state["pose"]
+        else:
+            try:
+                pose = Pose.model_validate(pose).model_dump(mode="json")
+            except ValidationError as exc:
+                raise RpcError("RobocoreError",
+                               f"bad pose: {exc}") from exc
+        await asyncio.to_thread(places.save, name, pose)
+        return {"pose": pose}
+
+    async def places_get(session: Session, params: dict[str, Any]) -> Any:
+        places = _require_places(ctx)
+        return {"pose": places.get(str(params.get("name")))}
+
+    async def places_list(session: Session, params: dict[str, Any]) -> Any:
+        places = _require_places(ctx)
+        return {"names": places.list()}
+
+    async def places_delete(session: Session,
+                            params: dict[str, Any]) -> Any:
+        places = _require_places(ctx)
+        await asyncio.to_thread(places.delete, str(params.get("name")))
+        return {}
 
     # -- debug (test plumbing, not robot API) ----------------------------------------
 
@@ -728,6 +934,24 @@ def build_registry(ctx: AgentContext) -> dict[str, Handler]:
     if "mobility" in profile.info.capabilities:
         registry["mobility.navigate_to"] = navigate_to
         registry["mobility.get_state"] = mobility_get_state
+        registry["mobility.stop"] = mobility_stop
+    if "slam" in profile.info.capabilities:
+        registry["slam.get_state"] = slam_get_state
+        registry["slam.start"] = slam_start
+        registry["slam.stop"] = slam_stop
+        registry["slam.save"] = slam_save
+        registry["slam.load"] = slam_load
+        registry["slam.localize"] = slam_localize
+        registry["slam.relocalize"] = slam_relocalize
+        registry["slam.wait_for_localization"] = slam_wait_for_localization
+        registry["slam.map_info"] = slam_map_info
+        registry["slam.delete"] = slam_delete
+        registry["slam.get_map"] = slam_get_map
+    if "places" in profile.info.capabilities:
+        registry["places.save"] = places_save
+        registry["places.get"] = places_get
+        registry["places.list"] = places_list
+        registry["places.delete"] = places_delete
     if "teleop" in profile.info.capabilities:
         registry["teleop.start"] = teleop_start
         registry["teleop.drive"] = teleop_drive

@@ -13,11 +13,13 @@ from .audit import AuditLog
 from .context import AgentContext
 from .events import EventHub
 from .handlers import build_registry
+from .places import PlaceStore
 from .profile import Profile
 from .safety import AgentState, MotionLock, SafetyLayer
 from .sensing import FrameCache
 from .server import AgentServer
 from .shm import ShmStore
+from .slam import SlamManager
 from .state_paths import build_path_table
 from .streams import StreamManager
 from .tasks import TaskManager
@@ -63,6 +65,10 @@ def build_agent(
         teleop=teleop,
         shm=ShmStore(profile.info.name),
     )
+    if ros is not None and "slam" in profile.info.capabilities:
+        ctx.slam = SlamManager(ros, profile.spec.slam.map_dir)
+    if ctx.slam is not None and "places" in profile.info.capabilities:
+        ctx.places = PlaceStore(ctx.slam)
     ctx.watch_paths = build_path_table(ctx) if ros is not None else {}
     server = AgentServer(
         registry=build_registry(ctx),

@@ -18,7 +18,8 @@ GRAMMAR = (
     "arms.<arm>.effort.<joint> | arms.<arm>.joint_positions.<joint> | "
     "arms.<arm>.wrench.{force,torque}.{x,y,z} | range.<name>.range | "
     "imu.angular_velocity.{x,y,z} | imu.linear_acceleration.{x,y,z} | "
-    "environment.{temperature,pressure,illuminance}"
+    "environment.{temperature,pressure,illuminance} | "
+    "slam.localization_quality"
 )
 
 
@@ -90,6 +91,11 @@ def build_path_table(ctx: Any) -> dict[str, Callable[[], float | None]]:
             if getattr(spec.environment, kind):
                 table[f"environment.{kind}"] = _dict_field(
                     lambda k=kind: ros.environment_reading(k), (kind,))
+
+    if ctx.slam is not None:
+        # Updated by the 2 Hz quality monitor; plain attribute read.
+        table["slam.localization_quality"] = (
+            lambda: float(ctx.slam.quality))
     return table
 
 

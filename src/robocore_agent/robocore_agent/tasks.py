@@ -34,10 +34,13 @@ class TaskHandle:
         self._manager = manager
 
     async def report(self, progress: float | None = None,
-                     message: str | None = None) -> None:
-        """Push a "running" task.update with optional progress (0..1)."""
+                     message: str | None = None,
+                     data: dict[str, Any] | None = None) -> None:
+        """Push a "running" task.update with optional progress (0..1)
+        and task-kind-specific feedback ``data``."""
         await self._manager._push(self._record, "running",
-                                  progress=progress, message=message)
+                                  progress=progress, message=message,
+                                  data=data)
 
 
 # A task body: takes the handle, returns the result dict (or None).
@@ -123,6 +126,7 @@ class TaskManager:
         state: str,
         progress: float | None = None,
         message: str | None = None,
+        data: dict[str, Any] | None = None,
         result: dict[str, Any] | None = None,
         error: TaskError | None = None,
     ) -> None:
@@ -130,7 +134,8 @@ class TaskManager:
         client must not kill the task."""
         record.state = state
         update = TaskUpdate(task_id=record.id, state=state, progress=progress,
-                            message=message, result=result, error=error)
+                            message=message, data=data, result=result,
+                            error=error)
         try:
             await record.session.websocket.send(
                 wire.notification("task.update",
@@ -157,9 +162,16 @@ class TaskManager:
     def cancel_running(self) -> int:
         """Cancel every running task regardless of owner (watch halt /
         e-stop path). Returns how many were cancelled."""
+        return self.cancel_kind("")
+
+    def cancel_kind(self, prefix: str) -> int:
+        """Cancel running tasks whose kind starts with ``prefix``
+        (e.g. "mobility." for robot.stop()). Returns the count."""
         cancelled = 0
         for record in list(self._tasks.values()):
-            if record.aio_task is not None and not record.aio_task.done():
+            if (record.kind.startswith(prefix)
+                    and record.aio_task is not None
+                    and not record.aio_task.done()):
                 record.aio_task.cancel()
                 cancelled += 1
         return cancelled

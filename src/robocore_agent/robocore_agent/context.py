@@ -20,7 +20,9 @@ from .tasks import TaskManager
 from .watches import WatchRegistry
 
 if TYPE_CHECKING:
+    from .places import PlaceStore
     from .shm import ShmStore
+    from .slam import SlamManager
     from .teleop import TeleopManager
 
 
@@ -44,5 +46,9 @@ class AgentContext:
     # The shared-memory payload store (None only in wire-stack unit
     # tests that never touch sensor methods).
     shm: "ShmStore | None" = None
+    # SLAM orchestration + named places (Phase 5; None without ROS or
+    # without the capability in the profile).
+    slam: "SlamManager | None" = None
+    places: "PlaceStore | None" = None
     # Watchable path table built from the profile (state_paths.py).
     watch_paths: dict = None  # type: ignore[assignment]

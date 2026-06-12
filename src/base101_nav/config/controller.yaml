@@ -56,11 +56,11 @@ controller_server:
       # Velocity envelope. Limits chosen for the simple variant (DDSM210,
       # 72.6 mm wheel, 210 RPM motor cap → ~0.8 m/s real maximum).
       # PRO variant can do ~1.5 m/s — bump vx_max if testing on pro.
-      # wz_max matches hw cap (2.5 rad/s = ~143 deg/s) for snappy turns.
-      vx_max: 0.8
+      # wz_max/vx_max reconciled to measured limits (Phase 5 tracker item).
+      vx_max: 0.5   # measured: DDSM210 rated-speed reality
       vx_min: -0.30
       vy_max: 0.0                       # diff drive, no lateral
-      wz_max: 2.5
+      wz_max: 1.5   # matches profile/diff_drive clamp
 
       iteration_count: 1
       prune_distance: 1.7

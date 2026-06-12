@@ -119,11 +119,18 @@ class AgentServer:
         from .sampler import run_watch_sampler
         self._sampler = asyncio.ensure_future(
             run_watch_sampler(self._ctx, self._ctx.watch_paths or {}))
+        if self._ctx.slam is not None:
+            from .slam import run_quality_monitor
+            self._slam_monitor = asyncio.ensure_future(
+                run_quality_monitor(self._ctx.slam))
 
     async def close(self) -> None:
         if self._sampler is not None:
             self._sampler.cancel()
             self._sampler = None
+        if getattr(self, "_slam_monitor", None) is not None:
+            self._slam_monitor.cancel()
+            self._slam_monitor = None
         self._ctx.streams.close()
         await self._ctx.tasks.cancel_all()
         for server in self._servers:

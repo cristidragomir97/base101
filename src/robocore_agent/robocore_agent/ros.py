@@ -23,11 +23,18 @@ from typing import Any
 
 import numpy as np
 import yaml
+from action_msgs.msg import GoalStatus
 from diagnostic_msgs.msg import DiagnosticArray
+from geometry_msgs.msg import Pose2D
+from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import Twist as TwistMsg
 from geometry_msgs.msg import TwistStamped as TwistStampedMsg
 from geometry_msgs.msg import WrenchStamped
+from nav2_msgs.action import NavigateToPose
+from nav2_msgs.srv import ClearEntireCostmap
+from nav_msgs.msg import OccupancyGrid as OccupancyGridMsg
 from nav_msgs.msg import Odometry
+from rclpy.action import ActionClient
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import (
@@ -50,6 +57,12 @@ from sensor_msgs.msg import (
     Temperature,
 )
 from sensor_msgs.msg import LaserScan as LaserScanMsg
+from slam_toolbox.srv import (
+    DeserializePoseGraph,
+    Pause,
+    Reset,
+    SerializePoseGraph,
+)
 from std_msgs.msg import String
 import tf2_ros
 
@@ -123,6 +136,70 @@ class RosInterface:
         self._distance = 0.0
         self._last_xy: tuple[float, float] | None = None
 
+        self._cmd_vel_pub = None
+        self._odom_topic = None
+        self._cmd_vel_stamped = True
+        mobility = profile.spec.mobility
+        if mobility is not None and mobility.odom_topic:
+            self._odom_topic = mobility.odom_topic
+        if mobility is not None and mobility.cmd_vel:
+            # On Jazzy, twist_mux (use_stamped:true) and diff_drive_controller
+            # both subscribe TwistStamped, so the cmd_vel sink type is a
+            # profile detail (mobility.cmd_vel_stamped). Publishing the wrong
+            # type means the messages are silently never delivered.
+            self._cmd_vel_stamped = mobility.cmd_vel_stamped
+            msg_type = TwistStampedMsg if self._cmd_vel_stamped else TwistMsg
+            self._cmd_vel_pub = node.create_publisher(
+                msg_type, mobility.cmd_vel, 10)
+        if mobility is not None and mobility.odom_topic:
+            node.create_subscription(
+                Odometry, mobility.odom_topic, self._on_odom, _ODOM_QOS)
+
+        self._tf_buffer = tf2_ros.Buffer()
+        self._tf_listener = tf2_ros.TransformListener(
+            self._tf_buffer, node, spin_thread=False)
+
+        # Autonomy plumbing (Phase 5): Nav2 action client, slam_toolbox
+        # service clients, /map subscription. Created eagerly when the
+        # profile declares the capability; all calls are blocking and go
+        # through asyncio.to_thread (futures resolve on the executor
+        # thread, the worker thread waits on an Event).
+        self._nav_client = None
+        self._nav_goal_handle = None
+        self._nav_feedback: dict[str, Any] | None = None
+        self._nav_result_future = None
+        if mobility is not None and mobility.nav2_navigate_to_pose:
+            self._nav_client = ActionClient(
+                node, NavigateToPose, mobility.nav2_navigate_to_pose)
+        self._costmap_clients = [
+            node.create_client(ClearEntireCostmap, name)
+            for name in ("/global_costmap/clear_entirely_global_costmap",
+                         "/local_costmap/clear_entirely_local_costmap")
+        ]
+        self._slam_clients: dict[str, Any] = {}
+        self._map_msg: OccupancyGridMsg | None = None
+        if profile.spec.slam is not None:
+            self._slam_clients = {
+                "serialize": node.create_client(
+                    SerializePoseGraph, "/slam_toolbox/serialize_map"),
+                "deserialize": node.create_client(
+                    DeserializePoseGraph, "/slam_toolbox/deserialize_map"),
+                "pause": node.create_client(
+                    Pause, "/slam_toolbox/pause_new_measurements"),
+                "reset": node.create_client(
+                    Reset, "/slam_toolbox/reset"),
+            }
+            # slam_toolbox publishes /map transient_local at
+            # map_update_interval; latch the latest for robot.map.
+            node.create_subscription(
+                OccupancyGridMsg, "/map", self._on_map,
+                QoSProfile(
+                    reliability=ReliabilityPolicy.RELIABLE,
+                    durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                    history=HistoryPolicy.KEEP_LAST,
+                    depth=1,
+                ))
+
         # Sensing state (Phase 4). Camera subscriptions are created
         # lazily on first use (4 cameras x 30 fps of Python-side image
         # callbacks is real CPU; don't pay it for cameras nobody reads).
@@ -184,29 +261,6 @@ class RosInterface:
     def _get_latest(self, key: str) -> Any | None:
         with self._lock:
             return self._latest.get(key)
-
-        self._cmd_vel_pub = None
-        self._odom_topic = None
-        self._cmd_vel_stamped = True
-        mobility = profile.spec.mobility
-        if mobility is not None and mobility.odom_topic:
-            self._odom_topic = mobility.odom_topic
-        if mobility is not None and mobility.cmd_vel:
-            # On Jazzy, twist_mux (use_stamped:true) and diff_drive_controller
-            # both subscribe TwistStamped, so the cmd_vel sink type is a
-            # profile detail (mobility.cmd_vel_stamped). Publishing the wrong
-            # type means the messages are silently never delivered.
-            self._cmd_vel_stamped = mobility.cmd_vel_stamped
-            msg_type = TwistStampedMsg if self._cmd_vel_stamped else TwistMsg
-            self._cmd_vel_pub = node.create_publisher(
-                msg_type, mobility.cmd_vel, 10)
-        if mobility is not None and mobility.odom_topic:
-            node.create_subscription(
-                Odometry, mobility.odom_topic, self._on_odom, _ODOM_QOS)
-
-        self._tf_buffer = tf2_ros.Buffer()
-        self._tf_listener = tf2_ros.TransformListener(
-            self._tf_buffer, node, spin_thread=False)
 
     # -- frame aliases ---------------------------------------------------------
 
@@ -737,6 +791,263 @@ class RosInterface:
                 "values": {kv.key: kv.value for kv in s.values},
             } for s in msg.status],
         }
+
+
+    # -- navigation (Phase 5) ------------------------------------------------------
+
+    def _pose_stamped(self, pose: dict[str, Any]) -> PoseStamped:
+        """Wire Pose dict -> PoseStamped, resolving frame aliases."""
+        msg = PoseStamped()
+        msg.header.frame_id = self.resolve_frame(
+            str(pose.get("frame", "@map")))
+        # stamp stays zero = "latest": a now() stamp can run ahead of
+        # bt_navigator's TF buffer and abort the goal on arrival.
+        msg.pose.position.x = float(pose.get("x", 0.0))
+        msg.pose.position.y = float(pose.get("y", 0.0))
+        msg.pose.position.z = float(pose.get("z", 0.0))
+        q = pose.get("q") or {}
+        msg.pose.orientation.x = float(q.get("x", 0.0))
+        msg.pose.orientation.y = float(q.get("y", 0.0))
+        msg.pose.orientation.z = float(q.get("z", 0.0))
+        msg.pose.orientation.w = float(q.get("w", 1.0))
+        return msg
+
+    def _on_map(self, msg: OccupancyGridMsg) -> None:
+        with self._lock:
+            self._map_msg = msg
+
+    def map_grid(self, wait: float = 5.0) -> dict[str, Any]:
+        """Latest occupancy grid as {width, height, resolution, origin,
+        stamp, data (H,W) int8}. Blocks up to ``wait`` for the first map;
+        call via asyncio.to_thread."""
+        deadline = time.monotonic() + wait
+        while True:
+            with self._lock:
+                msg = self._map_msg
+            if msg is not None:
+                break
+            if time.monotonic() > deadline:
+                raise TfLookupError(
+                    f"no map on /map within {wait}s (SLAM running?)")
+            time.sleep(0.05)
+        info = msg.info
+        o = info.origin
+        data = np.asarray(msg.data, dtype=np.int8).reshape(
+            info.height, info.width)
+        return {
+            "width": int(info.width),
+            "height": int(info.height),
+            "resolution": float(info.resolution),
+            "origin": {
+                "x": o.position.x, "y": o.position.y, "z": o.position.z,
+                "q": {"x": o.orientation.x, "y": o.orientation.y,
+                      "z": o.orientation.z, "w": o.orientation.w},
+                "frame": msg.header.frame_id or self._frames.map,
+            },
+            "stamp": _stamp(msg.header),
+            "data": data,
+        }
+
+    def nav_available(self, timeout: float = 2.0) -> bool:
+        """True when the NavigateToPose action server is up."""
+        if self._nav_client is None:
+            return False
+        return self._nav_client.wait_for_server(timeout_sec=timeout)
+
+    def nav_start(self, pose: dict[str, Any], timeout: float = 5.0) -> None:
+        """Send one NavigateToPose goal; blocks until accepted.
+
+        Raises TfLookupError if the server is missing or rejects the
+        goal. One active goal at a time (motion is single-writer).
+        Call via asyncio.to_thread.
+        """
+        if self._nav_client is None:
+            raise TfLookupError(
+                "profile declares no nav2_navigate_to_pose action")
+        if not self._nav_client.wait_for_server(timeout_sec=timeout):
+            raise TfLookupError(
+                "NavigateToPose action server not available "
+                "(is the nav stack running?)")
+        goal = NavigateToPose.Goal()
+        goal.pose = self._pose_stamped(pose)
+        with self._lock:
+            self._nav_feedback = None
+            self._nav_result_future = None
+            self._nav_goal_handle = None
+
+        accepted = threading.Event()
+        send_future = self._nav_client.send_goal_async(
+            goal, feedback_callback=self._on_nav_feedback)
+        send_future.add_done_callback(lambda _f: accepted.set())
+        if not accepted.wait(timeout):
+            raise TfLookupError("NavigateToPose goal send timed out")
+        handle = send_future.result()
+        if handle is None or not handle.accepted:
+            raise TfLookupError("NavigateToPose goal rejected")
+        with self._lock:
+            self._nav_goal_handle = handle
+            self._nav_result_future = handle.get_result_async()
+
+    def _on_nav_feedback(self, msg: Any) -> None:
+        fb = msg.feedback
+        p = fb.current_pose.pose
+        with self._lock:
+            self._nav_feedback = {
+                "distance_remaining": float(fb.distance_remaining),
+                "navigation_time": fb.navigation_time.sec
+                + fb.navigation_time.nanosec * 1e-9,
+                "estimated_time_remaining": fb.estimated_time_remaining.sec
+                + fb.estimated_time_remaining.nanosec * 1e-9,
+                "recoveries": int(fb.number_of_recoveries),
+                "pose": {
+                    "x": p.position.x, "y": p.position.y, "z": p.position.z,
+                    "q": {"x": p.orientation.x, "y": p.orientation.y,
+                          "z": p.orientation.z, "w": p.orientation.w},
+                    "frame": fb.current_pose.header.frame_id
+                    or self._frames.map,
+                },
+            }
+
+    def nav_feedback(self) -> dict[str, Any] | None:
+        with self._lock:
+            return self._nav_feedback
+
+    def nav_wait(self, poll: float = 0.1) -> dict[str, Any] | None:
+        """One bounded wait step for the active goal's result.
+
+        Returns None while still running (call again), else
+        {status: succeeded|canceled|aborted, error_code, error_msg}.
+        Call via asyncio.to_thread in a loop so task cancellation can
+        interleave.
+        """
+        with self._lock:
+            future = self._nav_result_future
+        if future is None:
+            raise TfLookupError("no active navigation goal")
+        done = threading.Event()
+        future.add_done_callback(lambda _f: done.set())
+        if future.done():
+            done.set()
+        if not done.wait(poll):
+            return None
+        wrapped = future.result()
+        status = {
+            GoalStatus.STATUS_SUCCEEDED: "succeeded",
+            GoalStatus.STATUS_CANCELED: "canceled",
+            GoalStatus.STATUS_ABORTED: "aborted",
+        }.get(wrapped.status, "aborted")
+        result = wrapped.result
+        with self._lock:
+            self._nav_goal_handle = None
+            self._nav_result_future = None
+        return {
+            "status": status,
+            "error_code": int(getattr(result, "error_code", 0)),
+            "error_msg": str(getattr(result, "error_msg", "")),
+        }
+
+    def nav_cancel(self, timeout: float = 2.0) -> None:
+        """Cancel the active goal, best effort. Safe to call anytime."""
+        with self._lock:
+            handle = self._nav_goal_handle
+        if handle is None:
+            return
+        done = threading.Event()
+        cancel_future = handle.cancel_goal_async()
+        cancel_future.add_done_callback(lambda _f: done.set())
+        done.wait(timeout)
+
+    def clear_costmaps(self, timeout: float = 2.0) -> int:
+        """Clear global+local costmaps (housekeeping before each goal).
+        Returns how many cleared; missing services are skipped quietly —
+        the nav stack may simply not be up yet."""
+        cleared = 0
+        for client in self._costmap_clients:
+            if not client.wait_for_service(timeout_sec=timeout):
+                continue
+            if self._call_service(client, ClearEntireCostmap.Request(),
+                                  timeout) is not None:
+                cleared += 1
+        return cleared
+
+    # -- SLAM (Phase 5) -------------------------------------------------------------
+
+    def slam_serialize(self, filename: str, timeout: float = 10.0) -> None:
+        """Serialize the pose graph to ``filename`` (slam_toolbox adds
+        .data/.posegraph). Raises TfLookupError on failure."""
+        request = SerializePoseGraph.Request()
+        request.filename = filename
+        response = self._slam_call("serialize", request, timeout)
+        if response.result != 0:
+            raise TfLookupError(
+                f"slam_toolbox failed to serialize to {filename!r} "
+                f"(result {response.result})")
+
+    def slam_deserialize(self, filename: str, match_type: int,
+                         x: float = 0.0, y: float = 0.0, theta: float = 0.0,
+                         timeout: float = 20.0) -> None:
+        """Load a pose graph. match_type: 1 = continue mapping from the
+        first node, 3 = localization at the given pose."""
+        request = DeserializePoseGraph.Request()
+        request.filename = filename
+        request.match_type = match_type
+        request.initial_pose = Pose2D(x=float(x), y=float(y),
+                                      theta=float(theta))
+        self._slam_call("deserialize", request, timeout)
+
+    def slam_pause_toggle(self, timeout: float = 5.0) -> bool:
+        """Toggle slam_toolbox's measurement processing; returns the NEW
+        paused state (slam_toolbox's Pause service is a toggle)."""
+        response = self._slam_call("pause", Pause.Request(), timeout)
+        return bool(response.status)
+
+    def slam_reset(self, pause: bool = False, timeout: float = 10.0) -> None:
+        """Clear the pose graph and start a fresh map."""
+        request = Reset.Request()
+        request.pause_new_measurements = pause
+        self._slam_call("reset", request, timeout)
+
+    def _slam_call(self, key: str, request: Any, timeout: float) -> Any:
+        client = self._slam_clients.get(key)
+        if client is None:
+            raise TfLookupError("profile declares no slam capability")
+        if not client.wait_for_service(timeout_sec=min(timeout, 5.0)):
+            raise TfLookupError(
+                f"slam_toolbox service {client.srv_name!r} not available "
+                "(is the slam stack running?)")
+        response = self._call_service(client, request, timeout)
+        if response is None:
+            raise TfLookupError(
+                f"slam_toolbox service {client.srv_name!r} timed out")
+        return response
+
+    @staticmethod
+    def _call_service(client: Any, request: Any,
+                      timeout: float) -> Any | None:
+        """Blocking service call from a worker thread (futures resolve
+        on the executor thread). None on timeout."""
+        done = threading.Event()
+        future = client.call_async(request)
+        future.add_done_callback(lambda _f: done.set())
+        if not done.wait(timeout):
+            return None
+        return future.result()
+
+    def map_odom_correction(self) -> tuple[float, float, float] | None:
+        """Current map->odom transform as (x, y, yaw), or None when the
+        TF is not available (not localized / SLAM down). Used by the
+        localization-quality monitor: in a well-localized run this drifts
+        smoothly; jumps mean relocalization events."""
+        try:
+            t = self._tf_buffer.lookup_transform(
+                self._frames.map, self._frames.odom, Time())
+        except tf2_ros.TransformException:
+            return None
+        q = t.transform.rotation
+        yaw = math.atan2(2 * (q.w * q.z + q.x * q.y),
+                         1 - 2 * (q.y * q.y + q.z * q.z))
+        tr = t.transform.translation
+        return (tr.x, tr.y, yaw)
 
 
 def _stamp(header: Any) -> float:
