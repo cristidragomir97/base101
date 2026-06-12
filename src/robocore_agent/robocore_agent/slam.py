@@ -11,7 +11,7 @@ Map storage layout (one directory per map under the profile's
 slam.map_dir, default ~/.robocore/maps):
 
     <map_dir>/<name>/<name>.posegraph + .data   serialized pose graph
-    <map_dir>/<name>/grid.pgm + grid.yaml       2D occupancy export
+    <map_dir>/<name>/grid.png + grid.yaml       2D occupancy export
     <map_dir>/<name>/map_info.yaml              MapInfo metadata
     <map_dir>/<name>/places.yaml                named places (places.py)
 
@@ -207,7 +207,7 @@ class SlamManager:
         try:
             subprocess.run(
                 ["ros2", "run", "nav2_map_server", "map_saver_cli",
-                 "-f", str(target / "grid"),
+                 "-f", str(target / "grid"), "--fmt", "png",
                  "--ros-args", "-p", "use_sim_time:=true"],
                 capture_output=True, timeout=30.0, check=True,
             )
