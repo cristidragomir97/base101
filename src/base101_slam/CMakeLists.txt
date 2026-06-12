@@ -1,21 +1,18 @@
 cmake_minimum_required(VERSION 3.8)
-project(base101_nav)
+project(base101_slam)
 
 find_package(ament_cmake REQUIRED)
 
-# Install launch files
 install(DIRECTORY launch/
   DESTINATION share/${PROJECT_NAME}/launch
 )
 
-# Install config files
 install(DIRECTORY config/
   DESTINATION share/${PROJECT_NAME}/config
 )
 
-# Install behavior trees
-install(DIRECTORY behavior_trees/
-  DESTINATION share/${PROJECT_NAME}/behavior_trees
+install(DIRECTORY maps/
+  DESTINATION share/${PROJECT_NAME}/maps
 )
 
 if(BUILD_TESTING)

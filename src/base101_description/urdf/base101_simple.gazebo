@@ -22,6 +22,16 @@
   <mu2>0.2</mu2>
   <self_collide>true</self_collide>
   <gravity>true</gravity>
+
+  <!-- IMU at the base origin: feeds the EKF (ekf.sim.yaml imu0) and the
+       robocore imu API. Additive: existing topics are untouched. -->
+  <sensor name="base_imu" type="imu">
+    <topic>sensors/imu</topic>
+    <gz_frame_id>base_link</gz_frame_id>
+    <update_rate>100</update_rate>
+    <always_on>1</always_on>
+    <visualize>false</visualize>
+  </sensor>
 </gazebo>
 
 <gazebo reference="lidar_1">

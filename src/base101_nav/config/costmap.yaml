@@ -1,27 +1,37 @@
-# Costmap Configuration for base101 robot (Map-Based Navigation)
-# Used in navigation mode with static map
+# Unified costmap config for base101.
+# Works in all modes: slam_toolbox always publishes /map, so the static_layer
+# always has a map to subscribe to. In mapping mode the map grows; in
+# localization mode it's the loaded map; in "mapfree" mode it's a SLAM map
+# the user doesn't care about saving but which still provides global context.
 
 # Global costmap - for path planning
 global_costmap:
   global_costmap:
     ros__parameters:
-      update_frequency: 1.0               # Nav2 default — static map doesn't need to recompute often
-      publish_frequency: 1.0
+      # 3 Hz update: faster than the static-map default (1 Hz) because in
+      # mapping mode the underlying /map is GROWING and the planner needs
+      # to see clear cells near the robot soon after they appear.
+      update_frequency: 3.0
+      publish_frequency: 2.0
       global_frame: map
       robot_base_frame: base_link
       use_sim_time: false
-      # base101 robot footprint (approximate 30cm x 20cm rectangle)
       # base101 footprint — track width 0.38 m + wheel half-width, length is a rough
       # estimate from the chassis xacro; refine against CAD once measured.
       footprint: "[[0.25, 0.24], [0.25, -0.24], [-0.25, -0.24], [-0.25, 0.24]]"
       resolution: 0.05                    # 5cm cells
+      # Keep unknown distinguishable from free: frontier finding (now a
+      # Python mission concern) needs it, and planner.yaml allows planning
+      # across unknown anyway.
       track_unknown_space: true
-      rolling_window: false               # Use full static map
+      rolling_window: false               # Use the full SLAM/loaded map
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
 
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
+        subscribe_to_updates: true
+        map_topic: /map
 
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"

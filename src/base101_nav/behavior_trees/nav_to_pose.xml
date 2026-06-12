@@ -1,51 +1,23 @@
 <!--
-  Navigate To Pose behavior tree for base101.
+  Minimal Navigate To Pose for base101 + robocore.
 
-  Direct adoption of Nav2 jazzy's canonical
-  navigate_to_pose_w_replanning_and_recovery.xml. The only local tweak
-  is Wait wait_duration: 5.0 -> 2.0 (our test environments are small).
+  Plan, follow, fail. No RecoveryNode, no retries, no fallback, no spin
+  (dangerous with tower and dual arms), no wait. Nav2 returns ABORTED on
+  any failure; the robocore bridge yields NavStatus(phase="stuck") to
+  the Python generator and the user's mission script decides what
+  happens next. The bridge clears both costmaps before each
+  navigate_to call as housekeeping (direct service calls — there is no
+  behavior_server in this stack).
 -->
 <root BTCPP_format="4" main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
-    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
-      <PipelineSequence name="NavigateWithReplanning">
-        <ControllerSelector selected_controller="{selected_controller}" default_controller="FollowPath" topic_name="controller_selector"/>
-        <PlannerSelector selected_planner="{selected_planner}" default_planner="GridBased" topic_name="planner_selector"/>
-        <RateController hz="1.0">
-          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
-            <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>
-            <Sequence>
-              <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
-              <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
-            </Sequence>
-          </RecoveryNode>
-        </RateController>
-        <RecoveryNode number_of_retries="1" name="FollowPath">
-          <FollowPath path="{path}" controller_id="{selected_controller}" error_code_id="{follow_path_error_code}"/>
-          <Sequence>
-            <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
-            <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
-          </Sequence>
-        </RecoveryNode>
-      </PipelineSequence>
-      <Sequence>
-        <Fallback>
-          <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
-          <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
-        </Fallback>
-        <ReactiveFallback name="RecoveryFallback">
-          <GoalUpdated/>
-          <RoundRobin name="RecoveryActions">
-            <Sequence name="ClearingActions">
-              <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
-              <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
-            </Sequence>
-            <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/>
-            <Wait wait_duration="2.0"/>
-            <BackUp backup_dist="0.30" backup_speed="0.15" error_code_id="{backup_error_code}"/>
-          </RoundRobin>
-        </ReactiveFallback>
-      </Sequence>
-    </RecoveryNode>
+    <PipelineSequence name="NavigateWithReplanning">
+      <RateController hz="1.0">
+        <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"
+                           error_code_id="{compute_path_error_code}"/>
+      </RateController>
+      <FollowPath path="{path}" controller_id="FollowPath"
+                  error_code_id="{follow_path_error_code}"/>
+    </PipelineSequence>
   </BehaviorTree>
 </root>

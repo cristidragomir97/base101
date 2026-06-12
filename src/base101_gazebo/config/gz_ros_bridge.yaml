@@ -12,3 +12,8 @@
 - topic_name: "/base_camera/camera_info"
   ros_type_name: "sensor_msgs/msg/CameraInfo"
   gz_type_name: "gz.msgs.CameraInfo"
+
+# IMU on base_link: consumed by the EKF (base101_slam) and robocore.
+- topic_name: "/sensors/imu"
+  ros_type_name: "sensor_msgs/msg/Imu"
+  gz_type_name: "gz.msgs.IMU"

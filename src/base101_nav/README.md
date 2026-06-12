@@ -1,47 +1,51 @@
 # base101 Navigation Package
 
-Nav2 configuration and mode management for the base101 robot.
+Pure Nav2 stack for the base101 robot: planner, controller, bt_navigator,
+velocity smoother. Restructured for robocore autonomy (see
+`docs/worklogs/nav_restructure.md`): one always-on launch, no modes, no
+mode_manager, no behavior_server, no AMCL, no explore_lite.
+
+SLAM and odometry fusion live in **base101_slam**. The two stacks are
+deliberately independent — each has its own lifecycle manager and neither
+package depends on the other. Nav2 consumes `/map` and the `map->odom`
+TF from whatever publishes them (slam_toolbox here) and starts fine
+before they exist.
 
 ## Quick Start
 
 ```bash
-# Build the package
-colcon build --packages-select base101_nav
+colcon build --packages-select base101_nav base101_slam
 source install/setup.bash
 
-# Launch navigation with a map
-ros2 launch base101_nav navigation.launch.py map:=/path/to/map.yaml
+# The robot's body (sim)
+ros2 launch base101_gazebo gazebo.launch.py tower:=true arms:=true
 
-# Launch SLAM for mapping
-ros2 launch base101_nav mapping.launch.py
+# SLAM half (mapping by default; localization via service switch)
+ros2 launch base101_slam slam.launch.py use_sim_time:=true
 
-# Launch mapfree navigation (no localization)
-ros2 launch base101_nav mapfree.launch.py
-
-# Launch the mode manager (orchestrates mode switching)
-ros2 launch base101_nav mode_manager.launch.py
+# Nav2 half
+ros2 launch base101_nav nav.launch.py use_sim_time:=true
 ```
 
-## Navigation Modes
+## Design
 
-### Navigation Mode
-Full autonomous navigation using a pre-built map:
-- Map server provides static occupancy grid
-- AMCL localizes the robot in the map
-- Nav2 plans and executes paths
-- Recovery behaviors handle stuck situations
-
-### Mapping Mode
-SLAM for building new maps:
-- SLAM Toolbox builds map in real-time
-- Teleoperate the robot to explore
-- Save maps via service call
-
-### Mapfree Mode
-Local navigation without a map:
-- Identity transform from map to odom
-- Rolling window costmaps
-- Good for teleoperation with obstacle avoidance
+- **Modes are service calls, not process restarts.** slam_toolbox starts
+  in mapping mode; the robocore bridge switches to localization via
+  `/slam_toolbox/deserialize_map` and saves maps via
+  `/slam_toolbox/serialize_map` + `map_saver_cli`.
+- **No recovery behaviors in ROS.** The BT is plan/follow/fail
+  (`behavior_trees/nav_to_pose.xml`): Nav2 returns ABORTED on any
+  failure, the bridge yields `NavStatus(phase="stuck")`, and the Python
+  mission decides what happens next. The bridge clears both costmaps
+  before each goal via `/global_costmap/clear_entirely_global_costmap`
+  and `/local_costmap/clear_entirely_local_costmap`. No spinning — the
+  tower and arms make it dangerous.
+- **One costmap config for all modes** (`config/costmap.yaml`):
+  slam_toolbox always publishes `/map`, so the static layer always has a
+  map — growing while mapping, fixed when localized.
+- **cmd_vel topology:** controller → `cmd_vel_raw` → velocity_smoother →
+  `cmd_vel_nav` → twist_mux (priority 10, below agent teleop at 50 and
+  joystick at 100).
 
 ## Configuration Files
 
@@ -49,13 +53,10 @@ Local navigation without a map:
 |------|---------|
 | `planner.yaml` | SmacPlanner2D global path planning |
 | `controller.yaml` | MPPI controller for trajectory following |
-| `costmap.yaml` | Global/local costmaps for map-based navigation |
-| `costmap_mapfree.yaml` | Costmaps for mapfree mode |
-| `amcl.yaml` | AMCL localization parameters |
+| `costmap.yaml` | Unified global/local costmaps (all modes) |
 | `bt_navigator.yaml` | Behavior tree navigator config |
-| `behavior.yaml` | Recovery behaviors (spin, backup, wait) |
 | `velocity_smoother.yaml` | Velocity command smoothing |
-| `slam_toolbox.yaml` | SLAM Toolbox configuration |
+| `laser_filter.yaml` | Scan filter config (not currently launched) |
 
 ## Robot Parameters
 
@@ -65,35 +66,3 @@ The configuration is tuned for the base101 robot (differential drive, DDSM115 wh
 - Max linear velocity: 0.8 m/s (controller cap; hw allows 1.5)
 - Max angular velocity: 1.5 rad/s (controller cap; hw allows 2.5)
 - Footprint: ~50cm x 48cm rectangle (refine against CAD)
-
-## Map Storage
-
-Maps are stored in `~/.base101/maps/` with the format:
-- `mapname.yaml` - Map metadata
-- `mapname.pgm` - Occupancy grid image
-
-## Services
-
-| Service | Type | Description |
-|---------|------|-------------|
-| `/nav/change_mode` | Trigger | Cycle through modes (Phase 1) |
-| `/nav/save_map` | Trigger | Save current SLAM map |
-| `/nav/stop` | Trigger | Stop current mode |
-
-## Topics
-
-| Topic | Type | Description |
-|-------|------|-------------|
-| `/nav/mode` | String | Current mode |
-| `/nav/maps` | String (JSON) | Available maps |
-| `/nav/current_map` | String | Active map name |
-
-## Phase 2 Roadmap
-
-Phase 2 will migrate from subprocess spawning to lifecycle management:
-- Faster mode switching (< 1 second vs 5+ seconds)
-- Built-in health monitoring
-- Graceful state transitions
-- Custom service types for proper API
-
-See `SPEC.md` for the full specification.

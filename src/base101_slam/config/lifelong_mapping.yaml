@@ -1,4 +1,7 @@
 # Lifelong Mapping Configuration - base101 SLAM
+# NOT CURRENTLY USED: kept for reference for future continuous-mapping
+# scenarios. The launched config is slam_toolbox.yaml (mapping mode,
+# localization via service switch).
 # Allows dynamic switching between mapping and localization
 # Can load existing maps and continue mapping
 
