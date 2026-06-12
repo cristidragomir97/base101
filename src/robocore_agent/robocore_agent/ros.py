@@ -23,8 +23,10 @@ from typing import Any
 
 import numpy as np
 import yaml
+from diagnostic_msgs.msg import DiagnosticArray
 from geometry_msgs.msg import Twist as TwistMsg
 from geometry_msgs.msg import TwistStamped as TwistStampedMsg
+from geometry_msgs.msg import WrenchStamped
 from nav_msgs.msg import Odometry
 from rclpy.duration import Duration
 from rclpy.node import Node
@@ -35,7 +37,18 @@ from rclpy.qos import (
     ReliabilityPolicy,
 )
 from rclpy.time import Time
-from sensor_msgs.msg import BatteryState, CameraInfo, Image, JointState
+from sensor_msgs.msg import (
+    BatteryState,
+    CameraInfo,
+    FluidPressure,
+    Illuminance,
+    Image,
+    Imu,
+    JointState,
+    MagneticField,
+    Range,
+    Temperature,
+)
 from sensor_msgs.msg import LaserScan as LaserScanMsg
 from std_msgs.msg import String
 import tf2_ros
@@ -121,9 +134,10 @@ class RosInterface:
         self._description: str | None = None
         self._joint_limits: dict[str, tuple[float, float] | None] | None = None
 
-        # Cheap state subscriptions are eager: joint states and battery
-        # feed the watch sampler, which must see data before any client
-        # asks for it. The robot description arrives once, latched.
+        # Cheap state subscriptions are eager: joint states, battery and
+        # the low-rate sensor family feed the watch sampler, which must
+        # see data before any client asks for it. The robot description
+        # arrives once, latched. Only image topics are lazy.
         if self._spec.manipulation is not None or self._spec.joint_groups:
             node.create_subscription(
                 JointState, self._spec.joint_states,
@@ -132,8 +146,44 @@ class RosInterface:
         if status is not None and status.battery:
             node.create_subscription(
                 BatteryState, status.battery, self._on_battery, _SENSOR_QOS)
+        if status is not None and status.diagnostics:
+            node.create_subscription(
+                DiagnosticArray, status.diagnostics,
+                self._on_diagnostics, _SENSOR_QOS)
         node.create_subscription(
             String, "/robot_description", self._on_description, _LATCHED_QOS)
+
+        # latest-value sensors (robocore-types.md): one slot per source,
+        # read back as wire dicts by the matching *_reading() method.
+        self._latest: dict[str, Any] = {}
+        for name, range_cfg in (self._spec.range_sensors or {}).items():
+            self._subscribe_latest(Range, range_cfg.topic, f"range.{name}")
+        if self._spec.imu is not None:
+            self._subscribe_latest(Imu, self._spec.imu.topic, "imu")
+            if self._spec.imu.mag_topic:
+                self._subscribe_latest(
+                    MagneticField, self._spec.imu.mag_topic, "mag")
+        for arm_name, ft_cfg in (self._spec.force_torque or {}).items():
+            self._subscribe_latest(
+                WrenchStamped, ft_cfg.topic, f"wrench.{arm_name}")
+        env = self._spec.environment
+        if env is not None:
+            for kind, msg_type in (("temperature", Temperature),
+                                   ("pressure", FluidPressure),
+                                   ("illuminance", Illuminance)):
+                topic = getattr(env, kind)
+                if topic:
+                    self._subscribe_latest(msg_type, topic, f"env.{kind}")
+
+    def _subscribe_latest(self, msg_type: Any, topic: str, key: str) -> None:
+        def store(msg: Any, key: str = key) -> None:
+            with self._lock:
+                self._latest[key] = msg
+        self._node.create_subscription(msg_type, topic, store, _SENSOR_QOS)
+
+    def _get_latest(self, key: str) -> Any | None:
+        with self._lock:
+            return self._latest.get(key)
 
         self._cmd_vel_pub = None
         self._odom_topic = None
@@ -396,13 +446,7 @@ class RosInterface:
             rgb_entry, depth_entry = None, depth[-1]
 
         info = state.info
-        intrinsics = None
-        if info is not None:
-            intrinsics = {
-                "fx": info.k[0], "fy": info.k[4],
-                "cx": info.k[2], "cy": info.k[5],
-                "width": info.width, "height": info.height,
-            }
+        intrinsics = _intrinsics_dict(info)
         frame_id = cfg.frame or (
             info.header.frame_id if info is not None else None)
         if frame_id is None:
@@ -433,16 +477,9 @@ class RosInterface:
                 if info is not None:
                     break
                 time.sleep(0.02)
-        intrinsics = None
-        if info is not None:
-            intrinsics = {
-                "fx": info.k[0], "fy": info.k[4],
-                "cx": info.k[2], "cy": info.k[5],
-                "width": info.width, "height": info.height,
-            }
         frame_id = cfg.frame or (
             info.header.frame_id if info is not None else None)
-        return {"intrinsics": intrinsics, "frame_id": frame_id}
+        return {"intrinsics": _intrinsics_dict(info), "frame_id": frame_id}
 
     def snapshot_transforms(self, camera_frame: str) -> dict[str, dict]:
         """Latest transforms target <- camera for map/odom/base, for the
@@ -498,13 +535,17 @@ class RosInterface:
                 raise TfLookupError(
                     f"no scan on {self._spec.lidar.scan!r} within {wait}s")
             time.sleep(0.02)
+        intensities = np.asarray(msg.intensities, dtype=np.float32)
         return {
             "stamp": _stamp(msg.header),
             "frame": msg.header.frame_id,
             "angle_min": msg.angle_min,
             "angle_max": msg.angle_max,
             "angle_increment": msg.angle_increment,
+            "range_min": msg.range_min,
+            "range_max": msg.range_max,
             "ranges": np.asarray(msg.ranges, dtype=np.float32),
+            "intensities": intensities if intensities.size else None,
         }
 
     # -- joint states / battery (Phase 4) ----------------------------------------
@@ -564,8 +605,12 @@ class RosInterface:
         with self._lock:
             self._battery = msg
 
-    def battery_state(self) -> tuple[float | None, bool | None]:
-        """(level 0..100, is_charging), (None, None) before data.
+    # sensor_msgs/BatteryState.power_supply_status values.
+    _POWER_STATUS = {1: "charging", 2: "discharging", 3: "not_charging",
+                     4: "full"}
+
+    def battery_state(self) -> dict[str, Any] | None:
+        """Wire-shaped BatteryState dict, or None before data.
 
         sensor_msgs/BatteryState.percentage is 0..1 per the message
         definition, but real drivers (and `ros2 topic pub` users)
@@ -575,17 +620,150 @@ class RosInterface:
         with self._lock:
             msg = self._battery
         if msg is None:
-            return None, None
-        level = float(msg.percentage)
+            return None
+        level: float | None = float(msg.percentage)
         if math.isnan(level):
-            return None, msg.power_supply_status == 1
-        if level <= 1.5:
+            level = None
+        elif level <= 1.5:
             level *= 100.0
-        return level, msg.power_supply_status == 1
+        return {
+            "level": level,
+            "voltage": _none_if_nan(msg.voltage),
+            "current": _none_if_nan(msg.current),
+            "temperature": _none_if_nan(msg.temperature),
+            "is_charging": msg.power_supply_status == 1,
+            "power_supply_status": self._POWER_STATUS.get(
+                msg.power_supply_status, "unknown"),
+            "stamp": _stamp(msg.header),
+        }
+
+    # -- latest-value sensor family (robocore-types.md) ---------------------------
+
+    def range_reading(self, name: str) -> dict[str, Any] | None:
+        msg = self._get_latest(f"range.{name}")
+        if msg is None:
+            return None
+        return {
+            "range": float(msg.range),
+            "min_range": float(msg.min_range),
+            "max_range": float(msg.max_range),
+            "field_of_view": float(msg.field_of_view),
+            "radiation_type": "infrared" if msg.radiation_type == 1
+            else "ultrasonic",
+            "stamp": _stamp(msg.header),
+            "frame": msg.header.frame_id,
+        }
+
+    def imu_reading(self) -> dict[str, Any] | None:
+        msg = self._get_latest("imu")
+        if msg is None:
+            return None
+        o, av, la = msg.orientation, msg.angular_velocity, \
+            msg.linear_acceleration
+        return {
+            "orientation": (
+                None if msg.orientation_covariance[0] == -1.0
+                else {"x": o.x, "y": o.y, "z": o.z, "w": o.w}),
+            "angular_velocity": {"x": av.x, "y": av.y, "z": av.z},
+            "linear_acceleration": {"x": la.x, "y": la.y, "z": la.z},
+            "orientation_covariance": _covariance(
+                msg.orientation_covariance),
+            "angular_velocity_covariance": _covariance(
+                msg.angular_velocity_covariance),
+            "linear_acceleration_covariance": _covariance(
+                msg.linear_acceleration_covariance),
+            "stamp": _stamp(msg.header),
+            "frame": msg.header.frame_id,
+        }
+
+    def mag_reading(self) -> dict[str, Any] | None:
+        msg = self._get_latest("mag")
+        if msg is None:
+            return None
+        f = msg.magnetic_field
+        return {
+            "magnetic_field": {"x": f.x, "y": f.y, "z": f.z},
+            "covariance": _covariance(msg.magnetic_field_covariance),
+            "stamp": _stamp(msg.header),
+            "frame": msg.header.frame_id,
+        }
+
+    def wrench_reading(self, arm: str) -> dict[str, Any] | None:
+        msg = self._get_latest(f"wrench.{arm}")
+        if msg is None:
+            return None
+        f, t = msg.wrench.force, msg.wrench.torque
+        return {
+            "force": {"x": f.x, "y": f.y, "z": f.z},
+            "torque": {"x": t.x, "y": t.y, "z": t.z},
+            "stamp": _stamp(msg.header),
+            "frame": msg.header.frame_id,
+        }
+
+    def environment_reading(self, kind: str) -> dict[str, Any] | None:
+        msg = self._get_latest(f"env.{kind}")
+        if msg is None:
+            return None
+        value_field = {"temperature": "temperature",
+                       "pressure": "fluid_pressure",
+                       "illuminance": "illuminance"}[kind]
+        return {
+            kind if kind != "pressure" else "pressure":
+                float(getattr(msg, value_field)),
+            "variance": float(msg.variance),
+            "stamp": _stamp(msg.header),
+            "frame": msg.header.frame_id,
+        }
+
+    def _on_diagnostics(self, msg: DiagnosticArray) -> None:
+        with self._lock:
+            self._latest["diagnostics"] = msg
+
+    _DIAG_LEVELS = {0: "ok", 1: "warn", 2: "error", 3: "stale"}
+
+    def diagnostics_report(self) -> dict[str, Any] | None:
+        msg = self._get_latest("diagnostics")
+        if msg is None:
+            return None
+        return {
+            "stamp": _stamp(msg.header),
+            "subsystems": [{
+                "name": s.name,
+                "level": self._DIAG_LEVELS.get(
+                    int.from_bytes(s.level, "little")
+                    if isinstance(s.level, bytes) else int(s.level),
+                    "stale"),
+                "message": s.message,
+                "values": {kv.key: kv.value for kv in s.values},
+            } for s in msg.status],
+        }
 
 
 def _stamp(header: Any) -> float:
     return header.stamp.sec + header.stamp.nanosec * 1e-9
+
+
+def _none_if_nan(value: float) -> float | None:
+    value = float(value)
+    return None if math.isnan(value) else value
+
+
+def _covariance(cov: Any) -> list[float] | None:
+    """ROS covariance convention: -1 in element [0] means unknown."""
+    cov = list(cov)
+    return None if not cov or cov[0] == -1.0 else cov
+
+
+def _intrinsics_dict(info: CameraInfo | None) -> dict[str, Any] | None:
+    if info is None:
+        return None
+    return {
+        "fx": info.k[0], "fy": info.k[4],
+        "cx": info.k[2], "cy": info.k[5],
+        "width": info.width, "height": info.height,
+        "distortion_model": info.distortion_model or "plumb_bob",
+        "distortion_coeffs": list(info.d),
+    }
 
 
 def _closest_pair(

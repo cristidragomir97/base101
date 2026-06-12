@@ -401,8 +401,10 @@ def build_registry(ctx: AgentContext) -> dict[str, Handler]:
             raise
         except Exception as exc:
             raise RpcError("RobocoreError", str(exc)) from exc
-        ranges = sample.pop("ranges")
-        sample["ranges"] = _shm_put(ranges, ttl=10.0)
+        sample["ranges"] = _shm_put(sample.pop("ranges"), ttl=10.0)
+        intensities = sample.pop("intensities")
+        sample["intensities"] = (
+            None if intensities is None else _shm_put(intensities, ttl=10.0))
         return sample
 
     async def lidar_scan(session: Session, params: dict[str, Any]) -> Any:
@@ -509,14 +511,87 @@ def build_registry(ctx: AgentContext) -> dict[str, Handler]:
         ctx.watches.stop(str(params.get("watch_id")), session.client_id)
         return {}
 
+    # -- latest-value sensors (robocore-types.md) -----------------------------------
+
+    def _read_latest(reader: Any, what: str) -> dict[str, Any]:
+        """Run a RosInterface *_reading method; map no-data to an error."""
+        _require_ros(ctx)
+        result = reader()
+        if result is None:
+            raise RpcError(
+                "TimeoutError",
+                f"no {what} data received yet (topic publishing? QoS?)",
+            )
+        return result
+
+    async def range_read(session: Session, params: dict[str, Any]) -> Any:
+        sensors = profile.spec.range_sensors or {}
+        name = params.get("name")
+        if not isinstance(name, str) or name not in sensors:
+            raise RpcError(
+                "RobocoreError",
+                f"unknown range sensor {name!r} (profile has "
+                f"{sorted(sensors)})",
+            )
+        ros = _require_ros(ctx)
+        return _read_latest(lambda: ros.range_reading(name),
+                            f"range sensor {name!r}")
+
+    async def imu_read(session: Session, params: dict[str, Any]) -> Any:
+        ros = _require_ros(ctx)
+        return _read_latest(ros.imu_reading, "imu")
+
+    async def imu_mag(session: Session, params: dict[str, Any]) -> Any:
+        if profile.spec.imu is None or not profile.spec.imu.mag_topic:
+            raise RpcError("RobocoreError",
+                           "profile declares no magnetometer (imu.mag_topic)")
+        ros = _require_ros(ctx)
+        return _read_latest(ros.mag_reading, "magnetometer")
+
+    async def arm_wrench(session: Session, params: dict[str, Any]) -> Any:
+        sensors = profile.spec.force_torque or {}
+        name = params.get("arm")
+        if not isinstance(name, str) or name not in sensors:
+            raise RpcError(
+                "RobocoreError",
+                f"no force/torque sensor for arm {name!r} (profile has "
+                f"{sorted(sensors)})",
+            )
+        ros = _require_ros(ctx)
+        return _read_latest(lambda: ros.wrench_reading(name),
+                            f"force/torque ({name})")
+
+    async def env_read(session: Session, params: dict[str, Any]) -> Any:
+        env = profile.spec.environment
+        kind = params.get("kind")
+        if kind not in ("temperature", "pressure", "illuminance"):
+            raise RpcError(
+                "RobocoreError",
+                "kind must be temperature | pressure | illuminance")
+        if env is None or not getattr(env, kind):
+            raise RpcError(
+                "RobocoreError",
+                f"profile declares no {kind} sensor (environment.{kind})")
+        ros = _require_ros(ctx)
+        return _read_latest(lambda: ros.environment_reading(kind), kind)
+
+    async def status_diagnostics(session: Session,
+                                 params: dict[str, Any]) -> Any:
+        status = profile.spec.status
+        if status is None or not status.diagnostics:
+            raise RpcError(
+                "RobocoreError",
+                "profile declares no diagnostics topic (status.diagnostics)")
+        ros = _require_ros(ctx)
+        return _read_latest(ros.diagnostics_report, "diagnostics")
+
     # -- status / events (Phase 4) -------------------------------------------------
 
     async def status_get(session: Session, params: dict[str, Any]) -> Any:
         battery = None
         if (ctx.ros is not None and profile.spec.status is not None
                 and profile.spec.status.battery):
-            level, charging = ctx.ros.battery_state()
-            battery = {"level": level, "is_charging": charging}
+            battery = ctx.ros.battery_state()
         return {"battery": battery, "estop": ctx.state.estop_engaged}
 
     async def events_subscribe(session: Session,
@@ -673,10 +748,20 @@ def build_registry(ctx: AgentContext) -> dict[str, Handler]:
         registry["lidar.stream_stop"] = lidar_stream_stop
     if "manipulation" in profile.info.capabilities:
         registry["arm.joint_states"] = arm_joint_states
+    if "range_sensors" in profile.info.capabilities:
+        registry["range.read"] = range_read
+    if "imu" in profile.info.capabilities:
+        registry["imu.read"] = imu_read
+        registry["imu.mag"] = imu_mag
+    if "force_torque" in profile.info.capabilities:
+        registry["arm.wrench"] = arm_wrench
+    if "environment" in profile.info.capabilities:
+        registry["env.read"] = env_read
     if "watches" in profile.info.capabilities:
         registry["watch.start"] = watch_start
         registry["watch.poll"] = watch_poll
         registry["watch.stop"] = watch_stop
     if "status" in profile.info.capabilities:
         registry["status.get"] = status_get
+        registry["status.diagnostics"] = status_diagnostics
     return registry
