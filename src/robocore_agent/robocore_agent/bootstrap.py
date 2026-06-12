@@ -11,12 +11,18 @@ from typing import Any
 
 from .audit import AuditLog
 from .context import AgentContext
+from .events import EventHub
 from .handlers import build_registry
 from .profile import Profile
 from .safety import AgentState, MotionLock, SafetyLayer
+from .sensing import FrameCache
 from .server import AgentServer
+from .shm import ShmStore
+from .state_paths import build_path_table
+from .streams import StreamManager
 from .tasks import TaskManager
 from .teleop import TeleopManager
+from .watches import WatchRegistry
 
 
 def build_agent(
@@ -49,9 +55,15 @@ def build_agent(
         safety=SafetyLayer(state, lock),
         state=state,
         lock=lock,
+        watches=WatchRegistry(),
+        events=EventHub(),
+        frames=FrameCache(),
+        streams=StreamManager(),
         ros=ros,
         teleop=teleop,
+        shm=ShmStore(profile.info.name),
     )
+    ctx.watch_paths = build_path_table(ctx) if ros is not None else {}
     server = AgentServer(
         registry=build_registry(ctx),
         ctx=ctx,

@@ -126,6 +126,16 @@ class TeleopManager:
         """Emergency hook (e-stop engaged): zero regardless of sessions."""
         self._publish_zero_quietly()
 
+    def end_all(self) -> int:
+        """Halt hook (stop-watch fired): end every session — zero
+        velocity, locks released. A hung owner's next drive gets
+        SafetyViolation("no teleop session"), which is the point.
+        Returns how many sessions were ended."""
+        clients = list(self._sessions)
+        for client_id in clients:
+            self.end(client_id)
+        return len(clients)
+
     # -- internals -----------------------------------------------------------------
 
     def _session(self, client_id: int) -> _Session:

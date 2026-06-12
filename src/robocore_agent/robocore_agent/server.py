@@ -57,6 +57,7 @@ class Session:
         self.client_id = next(self._ids)
         self.handshaken = False
         self.audit_subscribed = False
+        self.events_subscribed = False
         self._payload_ids = itertools.count(1)
 
     async def send_payload(self, kind: str, meta: dict[str, Any],
@@ -93,7 +94,9 @@ class AgentServer:
         self._port = port
         self._servers: list[Any] = []
         self._sessions: set[Session] = set()
+        self._sampler: asyncio.Task | None = None
         ctx.audit.subscribers.append(self._fan_out_audit_event)
+        ctx.events.subscribers.append(self._fan_out_event)
 
     async def start(self) -> None:
         """Bind the listeners. Raises OSError if a bind fails."""
@@ -111,13 +114,24 @@ class AgentServer:
                                             max_size=MAX_MESSAGE_BYTES)
             )
             log.info("listening on unix://%s", self._unix_path)
+        # The watch sampler lives and dies with the server: watches are
+        # safety surface, so they must run whenever clients can connect.
+        from .sampler import run_watch_sampler
+        self._sampler = asyncio.ensure_future(
+            run_watch_sampler(self._ctx, self._ctx.watch_paths or {}))
 
     async def close(self) -> None:
+        if self._sampler is not None:
+            self._sampler.cancel()
+            self._sampler = None
+        self._ctx.streams.close()
         await self._ctx.tasks.cancel_all()
         for server in self._servers:
             server.close()
             await server.wait_closed()
         self._servers.clear()
+        if self._ctx.shm is not None:
+            self._ctx.shm.close()
 
     # -- per-connection ------------------------------------------------------
 
@@ -141,6 +155,8 @@ class AgentServer:
         finally:
             self._sessions.discard(session)
             # A vanished client must not leave the robot moving or locked.
+            self._ctx.streams.on_disconnect(session)
+            self._ctx.watches.on_disconnect(session.client_id)
             if self._ctx.teleop is not None:
                 self._ctx.teleop.on_disconnect(session.client_id)
             if self._ctx.profile.spec.safety.stop_on_disconnect:
@@ -240,6 +256,16 @@ class AgentServer:
         if not subscribed:
             return
         text = wire.notification("audit.event", event.model_dump(mode="json"))
+        for session in subscribed:
+            asyncio.ensure_future(self._send_quietly(session, text))
+
+    def _fan_out_event(self, event: dict) -> None:
+        """EventHub subscriber: push system events (estop, watch fires)
+        to sessions that called events.subscribe."""
+        subscribed = [s for s in self._sessions if s.events_subscribed]
+        if not subscribed:
+            return
+        text = wire.notification("event", event)
         for session in subscribed:
             asyncio.ensure_future(self._send_quietly(session, text))
 

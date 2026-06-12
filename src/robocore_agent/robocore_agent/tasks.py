@@ -152,6 +152,14 @@ class TaskManager:
 
     async def cancel_all(self) -> None:
         """Shutdown helper: cancel everything still running."""
+        self.cancel_running()
+
+    def cancel_running(self) -> int:
+        """Cancel every running task regardless of owner (watch halt /
+        e-stop path). Returns how many were cancelled."""
+        cancelled = 0
         for record in list(self._tasks.values()):
             if record.aio_task is not None and not record.aio_task.done():
                 record.aio_task.cancel()
+                cancelled += 1
+        return cancelled

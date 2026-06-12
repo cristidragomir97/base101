@@ -127,6 +127,17 @@ def _setup(context, *args, **kwargs):
         output='screen',
     )
 
+    # Depth stream of the co-located base_camera_depth sensor (32FC1
+    # meters), consumed by the robocore agent for deprojection/clouds.
+    base_camera_depth_bridge = Node(
+        package='ros_gz_image',
+        executable='image_bridge',
+        name='base_camera_depth_bridge',
+        arguments=['/base_camera/depth_image'],
+        parameters=[{'use_sim_time': True}],
+        output='screen',
+    )
+
     twist_mux = Node(
         package='twist_mux',
         executable='twist_mux',
@@ -222,6 +233,7 @@ def _setup(context, *args, **kwargs):
         clock_bridge,
         bridge,
         base_camera_image_bridge,
+        base_camera_depth_bridge,
         twist_mux,
         spawn_robot,
         after_spawn,
