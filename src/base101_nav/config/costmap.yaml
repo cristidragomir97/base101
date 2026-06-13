@@ -16,9 +16,11 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       use_sim_time: false
-      # base101 footprint — track width 0.38 m + wheel half-width, length is a rough
-      # estimate from the chassis xacro; refine against CAD once measured.
-      footprint: "[[0.25, 0.24], [0.25, -0.24], [-0.25, -0.24], [-0.25, 0.24]]"
+      # base101 footprint, MEASURED from the URDF joint tree (base101_simple):
+      # bumpers span x -0.165..+0.175, outside wheels span y +/-0.144 — so the
+      # body is ~0.34 x 0.29 m. 0.18 x 0.15 half-extents enclose it with a few
+      # mm margin. (The old 0.25 x 0.24 was ~double the real width.)
+      footprint: "[[0.18, 0.15], [0.18, -0.15], [-0.18, -0.15], [-0.18, 0.15]]"
       resolution: 0.05                    # 5cm cells
       # Keep unknown distinguishable from free: frontier finding (now a
       # Python mission concern) needs it, and planner.yaml allows planning
@@ -50,16 +52,14 @@ global_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        # FLOOR: inflation_radius must be >= the footprint's
-        # circumscribed radius (0.3607 m here = circle enclosing the
-        # 0.5 x 0.48 footprint + 0.01 padding), or Nav2 disables the
-        # potential-field collision-check shortcut and planning crawls.
-        # 0.40 sits just above that floor — far below the old 0.55 that
-        # walled off every sub-1.1 m gap — so inflation past the robot's
-        # own circle is only ~0.04 m. To inflate LESS, shrink the
-        # footprint (needs the real measurement), not this.
+        # inflation_radius must stay >= the footprint's circumscribed
+        # radius (now ~0.245 m: circle enclosing 0.18 x 0.15 + 0.01 pad)
+        # or Nav2 disables its fast collision-check. 0.30 clears that
+        # floor with a real gradient band and is tiny next to the old
+        # 0.55 — gaps down to ~0.30 m (2x the 0.15 m inscribed radius)
+        # are now passable. cost_scaling 5.0 keeps the high-cost band thin.
         cost_scaling_factor: 5.0
-        inflation_radius: 0.40
+        inflation_radius: 0.30
 
       always_send_full_costmap: true
 
@@ -72,9 +72,11 @@ local_costmap:
       global_frame: odom
       robot_base_frame: base_link
       use_sim_time: false
-      # base101 footprint — track width 0.38 m + wheel half-width, length is a rough
-      # estimate from the chassis xacro; refine against CAD once measured.
-      footprint: "[[0.25, 0.24], [0.25, -0.24], [-0.25, -0.24], [-0.25, 0.24]]"
+      # base101 footprint, MEASURED from the URDF joint tree (base101_simple):
+      # bumpers span x -0.165..+0.175, outside wheels span y +/-0.144 — so the
+      # body is ~0.34 x 0.29 m. 0.18 x 0.15 half-extents enclose it with a few
+      # mm margin. (The old 0.25 x 0.24 was ~double the real width.)
+      footprint: "[[0.18, 0.15], [0.18, -0.15], [-0.18, -0.15], [-0.18, 0.15]]"
       rolling_window: true
       width: 3                            # 3m x 3m rolling window
       height: 3
@@ -99,6 +101,6 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 5.0
-        inflation_radius: 0.40            # match the global layer (see above)
+        inflation_radius: 0.30            # match the global layer (see above)
 
       always_send_full_costmap: true
