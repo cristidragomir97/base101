@@ -50,13 +50,16 @@ global_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        # inscribed radius ~0.24 m (footprint 0.5 x 0.48). 0.55 m at
-        # 0.05 m/cell was 11 cells of inflation — it walled off any gap
-        # narrower than ~1.1 m, i.e. most of the sim. 0.35 m clears the
-        # body with a small buffer; cost_scaling 5.0 makes the high-cost
-        # band thin so the planner threads real gaps.
+        # FLOOR: inflation_radius must be >= the footprint's
+        # circumscribed radius (0.3607 m here = circle enclosing the
+        # 0.5 x 0.48 footprint + 0.01 padding), or Nav2 disables the
+        # potential-field collision-check shortcut and planning crawls.
+        # 0.40 sits just above that floor — far below the old 0.55 that
+        # walled off every sub-1.1 m gap — so inflation past the robot's
+        # own circle is only ~0.04 m. To inflate LESS, shrink the
+        # footprint (needs the real measurement), not this.
         cost_scaling_factor: 5.0
-        inflation_radius: 0.35
+        inflation_radius: 0.40
 
       always_send_full_costmap: true
 
@@ -96,6 +99,6 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 5.0
-        inflation_radius: 0.35            # match the global layer (see above)
+        inflation_radius: 0.40            # match the global layer (see above)
 
       always_send_full_costmap: true
