@@ -50,8 +50,13 @@ global_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.55            # gentle gradient (Nav2 default pattern: large radius + low cost_scaling)
+        # inscribed radius ~0.24 m (footprint 0.5 x 0.48). 0.55 m at
+        # 0.05 m/cell was 11 cells of inflation — it walled off any gap
+        # narrower than ~1.1 m, i.e. most of the sim. 0.35 m clears the
+        # body with a small buffer; cost_scaling 5.0 makes the high-cost
+        # band thin so the planner threads real gaps.
+        cost_scaling_factor: 5.0
+        inflation_radius: 0.35
 
       always_send_full_costmap: true
 
@@ -90,7 +95,7 @@ local_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.55
+        cost_scaling_factor: 5.0
+        inflation_radius: 0.35            # match the global layer (see above)
 
       always_send_full_costmap: true
