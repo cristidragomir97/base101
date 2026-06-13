@@ -15,6 +15,10 @@ cmd_vel topology: controller -> cmd_vel_raw -> velocity_smoother ->
 cmd_vel_nav -> twist_mux (priority 10, below teleop).
 
     ros2 launch base101_nav nav.launch.py use_sim_time:=true
+    ros2 launch base101_nav nav.launch.py use_sim_time:=true rviz:=false  # headless
+
+Opens RViz by default (rviz:=false to suppress); the standalone
+rviz.launch.py is still there if you want RViz without the stack.
 """
 
 import os
@@ -30,6 +34,7 @@ def _setup(context, *args, **kwargs):
     pkg_dir = get_package_share_directory('base101_nav')
     use_sim_time = LaunchConfiguration('use_sim_time').perform(context) == 'true'
     autostart = LaunchConfiguration('autostart').perform(context) == 'true'
+    rviz = LaunchConfiguration('rviz').perform(context) == 'true'
 
     config = {name: os.path.join(pkg_dir, 'config', f'{name}.yaml')
               for name in ('planner', 'controller', 'bt_navigator',
@@ -100,8 +105,19 @@ def _setup(context, *args, **kwargs):
         )],
     )
 
-    return [planner_server, controller_server, bt_navigator,
-            velocity_smoother, lifecycle_manager]
+    nodes = [planner_server, controller_server, bt_navigator,
+             velocity_smoother, lifecycle_manager]
+
+    if rviz:
+        nodes.append(Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            output='log',     # rviz is chatty; keep its spew out of the console
+            arguments=['-d', os.path.join(pkg_dir, 'config', 'nav.rviz')],
+            parameters=[{'use_sim_time': use_sim_time}],
+        ))
+    return nodes
 
 
 def generate_launch_description():
@@ -115,6 +131,13 @@ def generate_launch_description():
             'autostart',
             default_value='true',
             description='Automatically start lifecycle nodes',
+        ),
+        DeclareLaunchArgument(
+            'rviz',
+            default_value='true',
+            choices=['true', 'false'],
+            description='Open RViz with the nav/SLAM display config '
+                        '(rviz:=false for headless runs).',
         ),
         OpaqueFunction(function=_setup),
     ])
