@@ -1,0 +1,32 @@
+<?xml version="1.0" ?>
+<robot name="base101_arm" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+<!-- One mod101 arm on the arm mount plate. Included from base101_arm.xacro
+     when arm:=true. mod101 stays a standalone repo: build it first and source
+     its install as an underlay, then build this workspace.
+
+     Joint names become arm_1..arm_6; controllers live in
+     base101_arm_control/config/controllers.sim.yaml. -->
+
+<xacro:include filename="$(find mod101_description)/urdf/mod101_macro.xacro"/>
+
+<!-- The only mod101 material base101's palette doesn't already define
+     (silver / accent_green / motor_black match byte-for-byte). -->
+<material name="body_darkgrey">
+  <color rgba="0.200 0.200 0.200 1.0"/>
+</material>
+
+<!-- The arm only gets gz_ros2_control/gazebo extensions in the gazebo sim;
+     mujoco scenes don't model it yet and simulator=none is rviz-only. -->
+<xacro:property name="arm_use_sim" value="${'$(arg simulator)' == 'gazebo'}"/>
+
+<!-- Mount point on the arm mount plate top face: the plate is ~160x220 mm and
+     its top deck sits ~3 mm above the link origin; the arm base (80x100 mm)
+     drops onto the plate centre (the plate's own inertial centroid in XY).
+     Refine against the physical bolt pattern. Unrotated, the arm's ready
+     stance reaches toward the robot's front (+X). -->
+<xacro:mod101_arm prefix="arm_" parent="arm_mount_plate"
+                  xyz="-0.08 0.11 0.01" rpy="0 0 0"
+                  tool="$(arg arm_tool)" use_sim="${arm_use_sim}"/>
+
+</robot>

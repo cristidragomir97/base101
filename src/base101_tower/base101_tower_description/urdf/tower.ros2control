@@ -1,0 +1,31 @@
+<?xml version="1.0" ?>
+<robot name="base101" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ros2_control system for the cross tower joints, kept separate from the
+       base wheel system. gz_ros2_control loads any number of systems from one
+       URDF under a single controller_manager. Gazebo-only for now: the tower
+       has no real actuator driver yet, and the mujoco scenes don't model it.
+       Driven by tower_controller (base101_dual_arm/config/controllers.tower.yaml). -->
+  <ros2_control name="base101_tower_system" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+
+    <joint name="lift">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="head_pan">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="head_tilt">
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+
+</robot>

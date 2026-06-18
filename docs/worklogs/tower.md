@@ -1,9 +1,15 @@
 # Cross tower worklog
 
+> **Note (post-consolidation):** the tower now lives in its own package,
+> `base101_dual_arm`. Paths below that say `base101_description/urdf/
+> base101_tower.xacro` are now `base101_dual_arm/urdf/tower.xacro`
+> (+ `tower.gazebo`, `tower.ros2control`), and the meshes are under
+> `base101_dual_arm/meshes/tower/`. The geometry/debugging notes still apply.
+
 Notes from merging `base101_cross_description` (a standalone Fusion CAD
 export of the simple chassis + tower) into the base101 workspace, plus the
 geometry-debugging passes that followed. Current state is whatever's in
-`base101_description/urdf/base101_tower.xacro` at HEAD.
+`base101_dual_arm/urdf/tower.xacro` at HEAD.
 
 ## Origin
 

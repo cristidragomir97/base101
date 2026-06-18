@@ -1,0 +1,48 @@
+<?xml version="1.0" ?>
+<!-- base101 "tower" variant: chassis + cross tower (+ optional dual arms).
+
+     Assembles the shared chassis (base101_description) and layers the cross
+     tower (lift column + pan/tilt head) on top, with optional dual mod101 arms
+     on the tower's crossbeam brackets. `arms:=true` requires the mod101
+     underlay sourced. Controllers live in base101_tower_control. -->
+<robot name="base101_tower" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:arg name="simulator" default="gazebo"/>
+  <xacro:arg name="arms" default="false"/>
+  <xacro:arg name="arm_tool" default="jaws"/>
+
+  <!-- Shared chassis. -->
+  <xacro:include filename="$(find base101_description)/urdf/materials.xacro"/>
+  <xacro:include filename="$(find base101_description)/urdf/chassis.xacro"/>
+
+  <!-- Tower kinematics (column + prismatic lift + pan/tilt head). -->
+  <xacro:include filename="$(find base101_tower_description)/urdf/tower.xacro"/>
+
+  <!-- Dual mod101 arms on the tower's crossbeam brackets. -->
+  <xacro:if value="$(arg arms)">
+    <xacro:include filename="$(find base101_tower_description)/urdf/arms.xacro"/>
+  </xacro:if>
+
+  <xacro:if value="${'$(arg simulator)' == 'gazebo'}">
+    <xacro:include filename="$(find base101_description)/urdf/chassis.gazebo.ros2control"/>
+    <xacro:include filename="$(find base101_description)/urdf/chassis.gazebo"/>
+    <!-- Tower link materials + head camera sensor, and a ros2_control system
+         for the tower joints (wheels keep their own system from the chassis). -->
+    <xacro:include filename="$(find base101_tower_description)/urdf/tower.gazebo"/>
+    <xacro:include filename="$(find base101_tower_description)/urdf/tower.ros2control"/>
+    <!-- gz_ros2_control loads this variant's controllers (wheels + tower
+         [+ arms]). The arm joints' ros2_control blocks come from the mod101
+         macro (use_sim=true) in arms.xacro. -->
+    <gazebo>
+      <plugin filename="gz_ros2_control-system"
+              name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+        <parameters>$(find base101_tower_control)/config/controllers.sim.yaml</parameters>
+      </plugin>
+    </gazebo>
+  </xacro:if>
+
+  <xacro:if value="${'$(arg simulator)' == 'mujoco'}">
+    <xacro:include filename="$(find base101_description)/urdf/chassis.mujoco.ros2control"/>
+  </xacro:if>
+
+</robot>

@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<robot name="base101" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Force-disable the sim ros2_control + per-sim extensions so this URDF is
+       safe to load on real hardware. Xacro takes the first <xacro:arg> for a
+       given name, so declaring simulator=none here before the include
+       overrides the description's default. -->
+  <xacro:arg name="simulator" default="none"/>
+  <xacro:include filename="$(find base101_simple_description)/urdf/base101_simple.xacro"/>
+
+  <!-- =================================================================
+       Hardware ros2_control block — Axon 2 firmware bridge.
+
+       The on-board Axon 2 firmware (axon-firmware) runs the DDSM210 wheel
+       drivers and exposes them as a ROS 2 node over zenoh: it subscribes to
+       /motor_manager/base_cmd (a Float64MultiArray of per-wheel velocities in
+       rad/s) and publishes /motor_manager/joint_states. base101_control_plugin
+       bridges the diff_drive_controller's per-wheel velocity command/state
+       interfaces to those topics.
+
+       IMPORTANT: the wheel <joint> order below is the order the bridge packs
+       into base_cmd[]. It must match the firmware's command_index in
+       axon-firmware/src/ros/axon_config.h: [0]=FL [1]=FR [2]=BL [3]=BR.
+       The joint NAMES must match the firmware's joint_states names
+       (front_left_wheel_joint, ...) so the state round-trip lines up.
+
+       Run the host zenoh router + rmw_zenoh first — see HARDWARE.md.
+       ================================================================= -->
+  <ros2_control name="base101_hw_system" type="system">
+    <hardware>
+      <plugin>base101_control_plugin/ROS2ControlBridge</plugin>
+      <param name="base_cmd_topic">/motor_manager/base_cmd</param>
+      <param name="state_topic">/motor_manager/joint_states</param>
+      <param name="publish_if_unchanged">true</param>
+    </hardware>
+
+    <joint name="front_left_wheel_joint">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="front_right_wheel_joint">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="back_left_wheel_joint">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="back_right_wheel_joint">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+
+</robot>

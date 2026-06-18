@@ -1,29 +1,24 @@
 # base101
 
 <p align="center">
-  <img src="img/simple.webp" alt="simple variant" width="48%" />
-  <img src="img/pro_mirrored.webp" alt="pro variant" width="48%" />
+  <img src="img/simple.webp" alt="base101" width="60%" />
 </p>
 
 An open-source 4WD mobile robot platform designed to carry the mod101 arm and other payloads. Built from 60×20 aluminum extrusion, PLA-CF printed parts, and Waveshare DDSM hub motors.
 
-Two configurations, same chassis, different motors.
-
 ## At a Glance
 
-| | base101 | base101 PRO |
-|---|---|---|
-| Motors | 4× DDSM210 | 4× DDSM115 |
-| Drive | 4WD skid steer | 4WD skid steer |
-| Torque (per motor) | 0.85 N·m stall | 2.0 N·m stall |
-| Load capacity | ~12kg total | ~30kg total |
-| Suspension | PLA-CF printed | PLA-CF printed |
-| Footprint | 280 × 400mm | 280 × 400mm |
-| Lidar | RPLidar C1 | RPLidar C1 |
-| Depth camera | RealSense D435 | RealSense D435 |
-| BOM | ~$340 | ~$480 |
-
-Both configurations share the same chassis, top plate, bumpers, electronics, and software. The upgrade from base to PRO is a motor and bracket swap.
+| | base101 |
+|---|---|
+| Motors | 4× DDSM210 |
+| Drive | 4WD skid steer |
+| Torque (per motor) | 0.85 N·m stall |
+| Load capacity | ~12kg total |
+| Suspension | PLA-CF printed |
+| Footprint | 280 × 400mm |
+| Lidar | RPLidar C1 |
+| Depth camera | RealSense D435 |
+| BOM | ~$340 |
 
 
 ## Chassis
@@ -40,7 +35,7 @@ Both configurations share the same chassis, top plate, bumpers, electronics, and
 **4WD skid steer.** Four hub motors, all driven. Turn-in-place capability. No mecanum wheels, no omni wheels — just rubber tires on smooth direct-drive motors. Quiet, clean, simple kinematics.
 
 
-### DDSM210 (base101)
+### DDSM210
 
 - 0.25 N·m rated / 0.85 N·m stall
 - ~65mm diameter, 216g
@@ -48,13 +43,6 @@ Both configurations share the same chassis, top plate, bumpers, electronics, and
 - ~$25 each
 
 Sized for a 5-8kg robot. Four wheels provide 97 N total tractive force at stall — enough to move 8kg up a 10% incline.
-
-### DDSM115 (base101 PRO)
-
-- 0.96 N·m rated / 2.0 N·m stall
-- ~115mm diameter, 765g
-- RS485 bus, 12-24V
-- ~$60 each
 
 
 ## Sensors
@@ -70,44 +58,133 @@ Front-mounted between the extrusion rails. 87° wide FOV for spatial awareness a
 
 ## Software
 
-ROS 2 Jazzy workspace. The `diff_drive_controller` handles skid-steer kinematics for both DDSM210 and DDSM115 configurations — the only parameter change is wheel diameter and separation.
+ROS 2 Jazzy workspace. The `diff_drive_controller` handles skid-steer kinematics for the DDSM210 drivetrain.
 
 ### Packages
 
+The workspace is a **shared core** plus one self-contained stack per
+**variant** (`description` / `gazebo` / `control`). Variants are grouped into
+folders under `src/` (`base101/`, `base101_arm/`, `base101_tower/`); colcon
+discovers packages recursively, so the folders are purely organisational.
+
+**Core / shared** — `src/base101/`
+
 | Package | Type | Purpose |
 |---|---|---|
-| `base101_description` | ament_python | Unified URDF (simple/pro + simulator selector via xacro args), meshes, RViz config. |
-| `base101_control` | ament_cmake | `diff_drive_controller` + `twist_mux` config, hardware bringup launch. |
-| `base101_gazebo` | ament_cmake | Gazebo Sim worlds, launch, ros↔gz bridge. |
-| `base101_mujoco` | ament_python | MuJoCo scenes, `mujoco_ros2_control` launch, companion lidar ray-cast bridge. |
-| `base101_isaac` | ament_python | NVIDIA Isaac Sim runner + launch. Imports the URDF, wires the OmniGraph ROS2 bridge. |
-| `base101_nav` | ament_cmake | Nav2 + slam_toolbox + frontier exploration. Configs, launches, RViz preset. |
+| `base101_description` | ament_python | **Shared chassis library**: chassis links/joints, sensors, materials, meshes. Every variant `xacro:include`s its `chassis.xacro` — *not launched directly*. |
+| `base101_control` | ament_cmake | Control-common: `twist_mux` config. |
+| `base101_control_plugin` | ament_cmake | `ros2_control` SystemInterface bridging wheel/arm/camera command+state interfaces to the Axon firmware's `/motor_manager/*` topics (zenoh). Shared by all variants. |
+| `base101_gazebo` | ament_cmake | Sim-common: Gazebo worlds, ros↔gz bridge, RViz preset. |
+
+**Variant stacks** — each is a self-contained `description` + `gazebo` + `control` trio that includes the shared chassis and adds only its own hardware. You launch a variant package — never `base101_description`.
+
+| Variant | Folder | Adds to the chassis | Packages |
+|---|---|---|---|
+| **simple** | `src/base101/` | nothing (the bare base robot) | `base101_simple_{description,gazebo,control}` |
+| **arm** | `src/base101_arm/` | hex standoff deck + 1 deck-mounted mod101 arm | `base101_arm_{description,gazebo,control}` |
+| **tower** | `src/base101_tower/` | lift column + pan/tilt head + optional 2 bracket arms | `base101_tower_{description,gazebo,control}` |
+
+The simple variant's `*_control` also carries the real-hardware bringup (`control_stack.launch.py`, the Axon hardware xacro) — see [`HARDWARE.md`](HARDWARE.md).
+
+**Other tooling** — `src/`
+
+| Package | Type | Purpose |
+|---|---|---|
+| `robocore_agent` | ament_python | Robocore (blueprint engine) agent: ROS interface, task/safety model, Nav2 + SLAM managers, sensor streams. |
 | `base101_mcp` | ament_python | Generic ROS2 ↔ MCP (Model Context Protocol) bridge. Lets Claude (or any MCP client) discover topics/services and read/publish messages over natural language. Requires `pip install "fastmcp>=2,<3"`. |
 | `base101_teleop` | ament_python | Standalone single-page web teleop (base + every joint) on `:8700`. Fallback for the rosboard Joint sliders card. |
 | `rosboard` | ament_python | Vendored web dashboard. Carries two publisher cards: **Teleop** (Twist) and **Joint sliders** (Float64MultiArray position commands for tower + arms). |
+
+### Package structure
+
+```mermaid
+graph TD
+    subgraph shared["src/base101/ — core / shared"]
+        DESC["base101_description<br/><i>chassis library: chassis.xacro,<br/>sensors, materials, meshes</i>"]
+        PLUGIN["base101_control_plugin<br/><i>ros2_control ↔ Axon bridge</i>"]
+        CTRL["base101_control<br/><i>twist_mux</i>"]
+        GZ["base101_gazebo<br/><i>worlds, gz bridge, rviz</i>"]
+    end
+
+    subgraph simple["src/base101/ — simple variant"]
+        SDESC[base101_simple_description]
+        SGZ[base101_simple_gazebo]
+        SCTRL[base101_simple_control]
+    end
+
+    subgraph arm["src/base101_arm/ — arm variant"]
+        ADESC[base101_arm_description]
+        AGZ[base101_arm_gazebo]
+        ACTRL[base101_arm_control]
+    end
+
+    subgraph tower["src/base101_tower/ — tower variant"]
+        TDESC[base101_tower_description]
+        TGZ[base101_tower_gazebo]
+        TCTRL[base101_tower_control]
+    end
+
+    MOD["mod101_description<br/><i>(underlay)</i>"]
+
+    %% every variant description includes the shared chassis
+    SDESC -->|includes chassis.xacro| DESC
+    ADESC -->|includes chassis.xacro| DESC
+    TDESC -->|includes chassis.xacro| DESC
+
+    %% arm/tower pull the mod101 arm macro
+    ADESC -->|mod101_arm macro| MOD
+    TDESC -->|mod101_arm macro| MOD
+
+    %% control: hardware bridge + sim controller path
+    SCTRL -->|hardware xacro includes| SDESC
+    SCTRL --> PLUGIN
+    SDESC -.->|gz plugin loads controllers.sim.yaml| SCTRL
+    ADESC -.->|gz plugin loads controllers.sim.yaml| ACTRL
+    TDESC -.->|gz plugin loads controllers.sim.yaml| TCTRL
+
+    %% gazebo bringup ties description + control + sim-common
+    SGZ --> SDESC & SCTRL & GZ & CTRL
+    AGZ --> ADESC & ACTRL & GZ & CTRL
+    TGZ --> TDESC & TCTRL & GZ & CTRL
+```
+
+Solid arrows are build/`xacro:include` dependencies; dashed arrows are the
+runtime `gz_ros2_control` controller-file lookup (resolved at Gazebo spawn,
+carried as a manifest dep by the `*_gazebo` package to avoid a cycle).
 
 ### Quickstart
 
 ```bash
 colcon build --symlink-install
 source install/setup.bash
-ros2 launch base101_gazebo gazebo.launch.py        # simple variant, sticky_floor world
-ros2 launch base101_gazebo gazebo.launch.py variant:=pro world:=empty.sdf
+ros2 launch base101_simple_gazebo gazebo.launch.py                    # bare chassis, sticky_floor world
+ros2 launch base101_arm_gazebo    gazebo.launch.py arm:=true          # chassis + 1 mod101 arm
+ros2 launch base101_tower_gazebo  gazebo.launch.py arms:=true         # chassis + tower + 2 arms
+ros2 launch base101_simple_gazebo gazebo.launch.py world:=empty.sdf   # pick a world
 ```
 
 Web teleop is at `http://localhost:8888/` (rosboard) once the sim is up.
+(The arm/tower variants need the [mod101](https://github.com/robocore-dev/mod101)
+underlay built and sourced first.)
+
+For the **real robot** (Axon 2 firmware over zenoh), see [`HARDWARE.md`](HARDWARE.md):
+
+```bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+ros2 launch base101_simple_control control_stack.launch.py
+```
 
 ### Cross tower (optional)
 
 An optional vertical tower (merged from the former `base101_cross_description`
 CAD export) bolts onto the top plate: a column with a prismatic **lift**
 carrying a crossbeam with two arm-mount brackets, and a **pan/tilt head**
-with a camera on top. Enable it with `tower:=true` — it works on both
-variants and in RViz, Gazebo, and the hardware overlay:
+with a camera on top. It's the **tower** variant — `base101_tower_description`
+includes the shared chassis and overlays the tower (sim-only for now):
 
 ```bash
-ros2 launch base101_gazebo gazebo.launch.py tower:=true
-ros2 launch base101_description display.launch.py tower:=true
+ros2 launch base101_tower_gazebo  gazebo.launch.py    # tower, no arms
+ros2 launch base101_tower_description display.launch.py   # rviz only
 ```
 
 | Joint | Type | Range | Notes |
@@ -118,7 +195,7 @@ ros2 launch base101_description display.launch.py tower:=true
 
 All three are position-controlled by **`tower_controller`**
 (`position_controllers/JointGroupPositionController`, spawned automatically
-when `tower:=true`):
+by the `base101_tower_gazebo` launch):
 
 ```bash
 ros2 topic pub /tower_controller/commands std_msgs/msg/Float64MultiArray \
@@ -126,12 +203,12 @@ ros2 topic pub /tower_controller/commands std_msgs/msg/Float64MultiArray \
 ```
 
 The head camera publishes `/head_camera/image_raw` (bridged like the base
-camera). The tower URDF lives in `base101_description/urdf/base101_tower.xacro`
-(+ `.gazebo`), meshes in `meshes/tower/`; the attachment point is variant-aware
-because the simple and pro CAD exports use different top-plate frames. The
-`left_arm_bracket_1` / `right_arm_bracket_1` links on the crossbeam are the
-mount points for two mod101 arms — see the next section. Full merge/debug
-notes: [`docs/worklogs/tower.md`](docs/worklogs/tower.md).
+camera). The tower URDF lives in `base101_tower_description/urdf/tower.xacro`
+(+ `tower.gazebo`, `tower.ros2control`), meshes in
+`base101_tower_description/meshes/tower/`; it bolts onto the chassis'
+`top_plate_1` deck link. The `left_arm_bracket_1` / `right_arm_bracket_1`
+links on the crossbeam are the mount points for two mod101 arms — see the next
+section. Full merge/debug notes: [`docs/worklogs/tower.md`](docs/worklogs/tower.md).
 
 ### Dual mod101 arms (optional, `arms:=true`)
 
@@ -139,8 +216,10 @@ Two [mod101](https://github.com/robocore-dev/mod101) arms mount on the
 tower's crossbeam brackets. The mod101 repo stays standalone — its arm is a
 prefix-parameterised xacro macro (`mod101_arm`, see
 `mod101_description/urdf/mod101_macro.xacro`) that this repo instantiates
-twice in `base101_description/urdf/base101_arms.xacro`, producing joints
-`left_arm_1…6` and `right_arm_1…6`.
+twice in `base101_tower_description/urdf/arms.xacro`, producing joints
+`left_arm_1…6` and `right_arm_1…6`. (The **arm** variant —
+`base101_arm_description` — instantiates the same macro once, deck-mounted,
+producing `arm_1…6`.)
 
 **Build** (mod101 first, then this workspace as an overlay — only needed
 when you actually use `arms:=true`):
@@ -153,17 +232,18 @@ source install/setup.bash
 ```
 
 (The `Python3_EXECUTABLE` pin guards against a stray non-system python on
-`PATH` breaking ament's package.xml parsing and `rosidl`'s `em` import. The
-`mod101_description` exec_depend in `base101_description` is not a rosdep
-key — pass `--skip-keys mod101_description` to `rosdep install` if you use
-it.)
+`PATH` breaking ament's package.xml parsing and `rosidl`'s `em` import — see
+the project-level `~/.colcon/defaults.yaml` note in [`HARDWARE.md`](HARDWARE.md).
+The `mod101_description` exec_depend in `base101_arm_description` /
+`base101_tower_description` is not a rosdep key — pass
+`--skip-keys mod101_description` to `rosdep install` if you use it.)
 
 **Launch:**
 
 ```bash
-ros2 launch base101_gazebo gazebo.launch.py tower:=true arms:=true            # jaws grippers
-ros2 launch base101_gazebo gazebo.launch.py tower:=true arms:=true arm_tool:=parallel
-ros2 launch base101_description display.launch.py tower:=true arms:=true     # rviz only
+ros2 launch base101_tower_gazebo gazebo.launch.py arms:=true                  # jaws grippers
+ros2 launch base101_tower_gazebo gazebo.launch.py arms:=true arm_tool:=parallel
+ros2 launch base101_tower_description display.launch.py arms:=true            # rviz only
 ```
 
 **Controllers** (all `position_controllers/JointGroupPositionController`,
@@ -200,59 +280,15 @@ Two ways to drive everything from a browser:
   plus a hold-to-drive base pad. See
   [`src/base101_teleop/README.md`](src/base101_teleop/README.md).
 
-### Simulators
+### Simulation
 
-The same robot URDF runs in three simulators. A `simulator` xacro arg
-(`gazebo|mujoco|isaac|none`) selects the ros2_control hardware plugin and
-any sim-specific URDF extensions. All three publish the same
-`/cmd_vel_*`, `/odom`, `/scan`, `/joint_states`, and
-`/base_camera/image_raw` topics, so Nav2/SLAM/exploration are oblivious to
-which one is running.
-
-```bash
-ros2 launch base101_gazebo gazebo.launch.py variant:=simple  # default, recommended
-ros2 launch base101_mujoco mujoco.launch.py variant:=simple
-ros2 launch base101_isaac  isaac.launch.py  variant:=simple
-```
-
-| | Gazebo | MuJoCo | Isaac Sim |
-|---|---|---|---|
-| Physics | DART / Bullet-Featherstone | MuJoCo (Featherstone) | PhysX 5 |
-| World format | SDF | MJCF | USD |
-| ros2_control plugin | `gz_ros2_control/GazeboSimSystem` | `mujoco_ros2_control/MujocoSystem` | None — OmniGraph drives joints natively |
-| Lidar | `<gpu_lidar>` + `ros_gz_bridge` | `base101_mujoco` companion node (parallel mjData + `mj_multiRay`) | RTX lidar + `ROS2RtxLidarHelper` |
-| Camera | Native + `ros_gz_image` | `mujoco_cameras.cpp` (built into `mujoco_ros2_control`) | USD camera + `ROS2CameraHelper` |
-| Maturity | Production | Joints + cameras production; lidar via companion node | Experimental — Isaac 6.x early-dev |
-
-**Install + dependencies.** See [`SIMULATORS.md`](SIMULATORS.md) for the
-full setup guide for each backend (apt packages, pip installs, build
-flags, common gotchas). Per-package details and the rationale behind
-each integration live in the package READMEs: [`base101_gazebo`](src/base101_gazebo/README.md),
-[`base101_mujoco`](src/base101_mujoco/README.md), [`base101_isaac`](src/base101_isaac/README.md).
-
-### Navigation, SLAM, and Exploration
-
-`base101_nav` ships a full Nav2 stack tuned for the base101 differential drive: SmacPlanner2D for global planning, Regulated Pure Pursuit for local control, slam_toolbox for online mapping, and `explore_lite` (vendored via `base101.repos`) for autonomous frontier exploration. Maps go in `~/.base101/maps/`. An RViz preset with Map, costmaps, paths, and the Nav2 goal panel is at `base101_nav/config/nav.rviz`.
-
-```bash
-# Drive around manually and build a map
-ros2 launch base101_nav mapping.launch.py use_sim_time:=true
-# (save with: ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap "{name: {data: '/home/$USER/.base101/maps/home'}}")
-
-# Navigate inside a saved map
-ros2 launch base101_nav navigation.launch.py map:=$HOME/.base101/maps/home.yaml use_sim_time:=true
-
-# SLAM + Nav2 at the same time, with optional autonomous exploration
-ros2 launch base101_nav slam_nav.launch.py use_sim_time:=true explore:=true
-
-# RViz with everything preconfigured
-ros2 launch base101_nav rviz.launch.py use_sim_time:=true
-```
-
-Pass `use_sim_time:=true` on every launch when running against Gazebo (sim/wall-clock mismatch causes silent TF extrapolation failures otherwise). Outputs are remapped through `velocity_smoother → /cmd_vel_nav → twist_mux → /diff_drive_controller/cmd_vel`, so joystick/keyboard inputs still preempt nav at their existing higher priorities.
-
-Runtime deps not in apt: `explore_lite` is pulled in via `vcs import src < base101.repos`. Everything else (`nav2_*`, `slam_toolbox`, `robot_localization`) is `ros-jazzy-*` packages.
-
+The robot runs in **Gazebo Sim** via `gz_ros2_control`. A `simulator` xacro
+arg on each variant (`gazebo` | `none`) selects whether the URDF carries the
+sim ros2_control + extension tags; `none` is the bare URDF for rviz / real
+hardware. Launch a variant's `*_gazebo` package (see Quickstart). The sim
+publishes the standard `/cmd_vel_*`, `/odom`, `/scan`, `/joint_states`, and
+`/base_camera/image_raw` topics. Worlds and the gz↔ros bridge config live in
+the shared `base101_gazebo` package.
 
 
 ## Project Status
@@ -263,12 +299,11 @@ Runtime deps not in apt: `explore_lite` is pulled in via `vcs import src < base1
 - [x] Suspension design (PLA-CF adaptation)
 - [x] URDF/xacro
 - [x] Gazebo simulation
-- [x] MuJoCo simulation
-- [x] Isaac Sim simulation
 - [x] ros2_control integration
-- [x] Nav2 + SLAM + frontier exploration
-- [x] Cross tower (prismatic lift + pan/tilt head, `tower:=true`)
-- [x] Combined base101 + dual mod101 system launch (`arms:=true`)
+- [x] Cross tower (prismatic lift + pan/tilt head) — **tower** variant
+- [x] Single deck-mounted mod101 arm — **arm** variant
+- [x] Combined base101 + dual mod101 system (tower variant, `arms:=true`)
+- [x] Per-variant package split (simple / arm / tower stacks over a shared chassis)
 - [x] Web teleop for all joints (rosboard Joint sliders + `base101_teleop`)
 - [ ] E-stop handle mechanism
 - [ ] CNC top plate manufacturing files (DXF)

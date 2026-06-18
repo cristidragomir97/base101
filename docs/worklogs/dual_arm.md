@@ -1,8 +1,13 @@
 # Dual mod101 arms worklog
 
+> **Note (post-consolidation):** the arms now live in `base101_dual_arm`.
+> `base101_description/urdf/base101_arms.xacro` → `base101_dual_arm/urdf/
+> arms.xacro`; `base101_control/config/controllers.arms.yaml` →
+> `base101_dual_arm/config/controllers.arms.yaml`.
+
 Notes from mounting two mod101 arms on the cross tower's crossbeam brackets.
-Current state is `base101_description/urdf/base101_arms.xacro` +
-`base101_control/config/controllers.arms.yaml` at HEAD. The tower itself has
+Current state is `base101_dual_arm/urdf/arms.xacro` +
+`base101_dual_arm/config/controllers.arms.yaml` at HEAD. The tower itself has
 its own worklog: [`tower.md`](tower.md).
 
 ## Design constraints

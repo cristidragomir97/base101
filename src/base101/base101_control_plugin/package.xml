@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>base101_control_plugin</name>
+  <version>0.0.1</version>
+  <description>
+    ros2_control SystemInterface that bridges controller command/state
+    interfaces to the base101 motor_manager topics (the on-board Axon 2
+    firmware node over zenoh): publishes per-wheel velocities to
+    /motor_manager/base_cmd and reads /motor_manager/joint_states back.
+    Vendored from LLMy's llmy_control_plugin (same robot-agnostic bridge).
+  </description>
+
+  <maintainer email="cristidragomir97@gmail.com">Cristi Dragomir</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>hardware_interface</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <hardware_interface plugin="${prefix}/plugin_description.xml"/>
+  </export>
+</package>

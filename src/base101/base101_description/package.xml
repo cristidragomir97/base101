@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>base101_description</name>
+  <version>0.0.0</version>
+  <description>
+    Shared chassis description for the base101 robot: the common base (wheels,
+    sensors, bumpers, lidar, base camera, deck) that every variant
+    (base101_simple/arm/tower_description) xacro:includes. Carries no
+    variant-specific links, no top-level robot, and no controller wiring — it
+    is a parts library, not a launchable robot.
+  </description>
+  <maintainer email="cristidragomir97@gmail.com">Cristi Dragomir</maintainer>
+  <license>TODO: License declaration</license>
+
+  <depend>xacro</depend>
+
+  <!-- chassis.gazebo.ros2control names gz_ros2_control/GazeboSimSystem; the
+       wheel hardware bridge plugin is base101_control_plugin (real hw). Both
+       are runtime lookups resolved by the variant that includes this. -->
+  <exec_depend>gz_ros2_control</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

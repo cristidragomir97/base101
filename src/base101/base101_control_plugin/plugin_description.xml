@@ -1,0 +1,8 @@
+<library path="base101_control_plugin">
+  <class
+    name="base101_control_plugin/ROS2ControlBridge"
+    type="base101_control_plugin::ROS2ControlBridge"
+    base_class_type="hardware_interface::SystemInterface">
+    <description>ros2_control SystemInterface that bridges controller commands to ROS2 topics and reads joint states from topics.</description>
+  </class>
+</library>
