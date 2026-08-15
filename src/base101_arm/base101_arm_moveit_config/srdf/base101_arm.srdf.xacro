@@ -1,0 +1,71 @@
+<?xml version="1.0"?>
+<!--
+  MoveIt semantics for the base101 "arm" variant: the chassis plus one mod101
+  arm on the deck.
+
+  The arm's own semantics are not restated here. mod101 exposes them as the
+  prefix-parameterised `mod101_arm_srdf` macro (mod101_moveit_config/srdf/
+  mod101_arm_srdf.xacro), so this file only has to do the three things the
+  standalone arm can't know about:
+
+    1. anchor the robot at base_link instead of mod101's own `world` link,
+    2. instantiate the arm macro with the arm_ prefix base101 mounts it under,
+    3. add the self-collision pairs that involve the chassis, which no
+       standalone arm config can contain.
+
+  On (3): the arm macro already emits its own arm-vs-arm matrix, and the arm's
+  internal geometry is identical whether or not it is bolted to a robot, so the
+  generated file here carries ONLY pairs with at least one chassis link. The
+  two are complementary, not overlapping.
+
+  (3) is the whole reason this package exists. The arm reaches ~525 mm from a
+  turret 186 mm up, and every chassis feature is inside that: Orin 105 mm away
+  (top at z=126 mm), lidar 138 mm (z=107), RealSense 173 mm (z=81), bumpers
+  206 mm (z=85). Without these pairs the planner will happily drive the gripper
+  through the robot's own lidar.
+
+  Group names come out `arm_arm` and `arm_gripper`: the macro names its groups
+  `${prefix}arm` / `${prefix}gripper`, and the prefix is `arm_`. Ugly but
+  consistent; config/*.yaml key on the same names.
+-->
+<robot name="base101_arm" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+<!-- Must match what base101_arm.xacro was expanded with. Defaults come from
+     the mod101 configurator via mod101_config.xacro, so leaving them alone
+     tracks whatever the arm is currently built as. -->
+<xacro:include filename="$(find mod101_description)/urdf/mod101_config.xacro"/>
+<xacro:arg name="arm_tool" default="$(arg tool)"/>
+
+<!-- The arm semantics macro, and the combined collision matrices. -->
+<xacro:include filename="$(find mod101_moveit_config)/srdf/mod101_arm_srdf.xacro"/>
+<xacro:include filename="$(find base101_arm_moveit_config)/config/collisions/parallel.srdf.xacro"/>
+<xacro:include filename="$(find base101_arm_moveit_config)/config/collisions/pincopen.srdf.xacro"/>
+<xacro:include filename="$(find base101_arm_moveit_config)/config/collisions/jaws.srdf.xacro"/>
+<xacro:include filename="$(find base101_arm_moveit_config)/config/collisions/none.srdf.xacro"/>
+
+<!-- Planning-scene anchor. Fixed, and on base_link rather than odom, because
+     we plan the arm only and treat the base as stationary for the duration of
+     a plan; the planning frame is therefore the robot itself and base motion
+     never invalidates a trajectory mid-execution. Planning base motion too
+     would mean a `planar` joint on odom, plus a controller that can execute it. -->
+<virtual_joint name="virtual_joint" type="fixed" parent_frame="world" child_link="base_link"/>
+
+<xacro:mod101_arm_srdf prefix="arm_" tool="$(arg arm_tool)"/>
+
+<!-- Pairs involving the chassis (arm-vs-chassis and chassis-vs-chassis).
+     Generated, because which pairs can never touch depends on the arm's rail
+     lengths, which the configurator changes. See scripts/gen_collision_matrix.py. -->
+<xacro:if value="${'$(arg arm_tool)' == 'parallel'}">
+  <xacro:base101_arm_collisions_parallel/>
+</xacro:if>
+<xacro:if value="${'$(arg arm_tool)' == 'pincopen'}">
+  <xacro:base101_arm_collisions_pincopen/>
+</xacro:if>
+<xacro:if value="${'$(arg arm_tool)' == 'jaws'}">
+  <xacro:base101_arm_collisions_jaws/>
+</xacro:if>
+<xacro:if value="${'$(arg arm_tool)' == 'none'}">
+  <xacro:base101_arm_collisions_none/>
+</xacro:if>
+
+</robot>

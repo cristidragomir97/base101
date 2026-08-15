@@ -1,46 +1,48 @@
 <?xml version="1.0" ?>
-<robot name="base101_simple" xmlns:xacro="http://www.ros.org/wiki/xacro">
+<robot name="base101_chassis" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
+<!-- Gazebo-only extensions for the shared chassis: visual materials, contact
+     properties, and the three sensors. No gz_ros2_control plugin here, that
+     block lives in each variant's top-level xacro so it can point at that
+     variant's controllers.sim.yaml.
 
-<xacro:property name="body_color" value="Gazebo/Grey" />
-<xacro:property name="silver_color" value="Gazebo/Silver" />
-<xacro:property name="motor_color" value="Gazebo/Black" />
-<xacro:property name="accent_color" value="Gazebo/Green" />
+     self_collide is false on every link. The chassis is one rigid tree joined
+     by fixed joints, so no two links can ever move into each other; leaving it
+     on just asked the solver to test ~325 link pairs of full-resolution
+     collision meshes on every step. Collision geometry itself is primitives
+     (see scripts/collision_primitives.py), not the visual meshes.
 
-<!-- ===================== base + IMU ===================== -->
-<gazebo reference="base_link">
-  <material>${motor_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
-  <gravity>true</gravity>
+     Sensors hang off the dedicated frame links declared in chassis.xacro
+     (imu_link, lidar_frame, camera_link) rather than off the mesh links, so
+     the published frame is the physical origin of the measurement. -->
 
-  <!-- IMU at the base origin: feeds the EKF (ekf.sim.yaml imu0) and the
-       robocore imu API. Additive: existing topics are untouched. -->
+<!-- D435: 87 deg HFOV. OAK-D: 69 deg on the RGB imager. -->
+<xacro:property name="camera_hfov" value="${1.518 if '$(arg camera)' == 'realsense' else 1.204}" />
+
+<!-- Mirrors the URDF palette in materials.xacro; keep the two in step. -->
+<xacro:property name="extrusion_color"   value="Gazebo/DarkGrey" />
+<xacro:property name="plate_color"       value="Gazebo/Grey" />
+<xacro:property name="plastic_color"     value="Gazebo/Black" />
+<xacro:property name="hardware_color"    value="Gazebo/Silver" />
+<xacro:property name="pcb_color"         value="Gazebo/Green" />
+<xacro:property name="electronics_color" value="Gazebo/DarkGrey" />
+<xacro:property name="motor_color"       value="Gazebo/Black" />
+
+<!-- ================================= IMU =================================
+     The IMU is a chip on the link101 carrier board, not a separate module, so
+     it reads out ~100 mm up and ~10 mm behind base_link. The EKF (ekf.sim.yaml
+     imu0) and the robocore imu API both consume /sensors/imu in imu_link. -->
+<gazebo reference="imu_link">
   <sensor name="base_imu" type="imu">
     <topic>sensors/imu</topic>
-    <gz_frame_id>base_link</gz_frame_id>
+    <gz_frame_id>imu_link</gz_frame_id>
     <update_rate>100</update_rate>
     <always_on>1</always_on>
     <visualize>false</visualize>
   </sensor>
 </gazebo>
 
-<!-- ===================== lidar ===================== -->
-<gazebo reference="lidar_1">
-  <material>${motor_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
-</gazebo>
-
-<gazebo reference="lidar_mount_1">
-  <material>${silver_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
-</gazebo>
-
+<!-- ================================ lidar ================================ -->
 <gazebo reference="lidar_frame">
   <sensor name="lidar" type="gpu_lidar">
     <topic>scan</topic>
@@ -66,21 +68,21 @@
   </sensor>
 </gazebo>
 
-<!-- ===================== base camera (rgb + depth) ===================== -->
-<gazebo reference="base_camera_1">
-  <material>${motor_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
-
+<!-- ====================== base camera (rgb + depth) ======================
+     Both sensors sit on camera_link (front face of whichever module is
+     fitted, +X out of the lens) so rgb and depth share intrinsics, stamps and
+     frame: robocore's get_depth / get_synced / deproject / get_cloud all
+     assume that pairing. Topic names stay /base_camera/* whichever camera the
+     `camera` arg selects, so the gz bridges do not care. -->
+<gazebo reference="camera_link">
   <sensor name="base_camera" type="camera">
     <topic>base_camera/image_raw</topic>
-    <gz_frame_id>base_camera_1</gz_frame_id>
+    <gz_frame_id>camera_link</gz_frame_id>
     <update_rate>30</update_rate>
     <always_on>1</always_on>
     <visualize>true</visualize>
     <camera>
-      <horizontal_fov>1.047</horizontal_fov>
+      <horizontal_fov>${camera_hfov}</horizontal_fov>
       <image>
         <width>640</width>
         <height>480</height>
@@ -93,19 +95,14 @@
     </camera>
   </sensor>
 
-  <!-- Depth sensor co-located with base_camera, same fov/resolution/rate,
-       so the rgb/depth pair shares intrinsics and stamps (robocore
-       get_depth / get_synced / deproject / get_cloud). Additive: existing
-       topics are untouched; real hardware maps its own depth topic in the
-       robot profile. -->
   <sensor name="base_camera_depth" type="depth_camera">
     <topic>base_camera/depth_image</topic>
-    <gz_frame_id>base_camera_1</gz_frame_id>
+    <gz_frame_id>camera_link</gz_frame_id>
     <update_rate>30</update_rate>
     <always_on>1</always_on>
     <visualize>false</visualize>
     <camera>
-      <horizontal_fov>1.047</horizontal_fov>
+      <horizontal_fov>${camera_hfov}</horizontal_fov>
       <image>
         <width>640</width>
         <height>480</height>
@@ -119,203 +116,245 @@
   </sensor>
 </gazebo>
 
-<!-- ===================== wheels ===================== -->
-<!-- The outside wheels carry the traction contact: high mu1 along fdir1,
-     low mu2 across, stiff contact (kp/kd). The inside hubs are non-colliding
-     internal links. -->
-<gazebo reference="wheel_outside_FR_1">
-  <material>${motor_color}</material>
-  <mu1>1.0</mu1>
-  <mu2>0.1</mu2>
-  <fdir1>1 0 0</fdir1>
-  <kp>10000000.0</kp>
-  <kd>1.0</kd>
-  <self_collide>false</self_collide>
-</gazebo>
-<gazebo reference="wheel_outside_FL_1">
-  <material>${motor_color}</material>
-  <mu1>1.0</mu1>
-  <mu2>0.1</mu2>
-  <fdir1>1 0 0</fdir1>
-  <kp>10000000.0</kp>
-  <kd>1.0</kd>
-  <self_collide>false</self_collide>
-</gazebo>
-<gazebo reference="wheel_outside_BL_1">
-  <material>${motor_color}</material>
-  <mu1>1.0</mu1>
-  <mu2>0.1</mu2>
-  <fdir1>1 0 0</fdir1>
-  <kp>10000000.0</kp>
-  <kd>1.0</kd>
-  <self_collide>false</self_collide>
-</gazebo>
-<gazebo reference="wheel_outside_BR_1">
-  <material>${motor_color}</material>
-  <mu1>1.0</mu1>
-  <mu2>0.1</mu2>
-  <fdir1>1 0 0</fdir1>
-  <kp>10000000.0</kp>
-  <kd>1.0</kd>
-  <self_collide>false</self_collide>
-</gazebo>
-
-<gazebo reference="wheel_inside_FR_1">
-  <material>${motor_color}</material>
+<!-- ================================ frame ================================ -->
+<gazebo reference="base_link">
+  <material>${plate_color}</material>
   <mu1>0.2</mu1>
   <mu2>0.2</mu2>
   <self_collide>false</self_collide>
-</gazebo>
-<gazebo reference="wheel_inside_FL_1">
-  <material>${motor_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>false</self_collide>
-</gazebo>
-<gazebo reference="wheel_inside_BL_1">
-  <material>${motor_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>false</self_collide>
-</gazebo>
-<gazebo reference="wheel_inside_BR_1">
-  <material>${motor_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>false</self_collide>
-</gazebo>
-
-<gazebo reference="motor_support_fr_1">
-  <material>${silver_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
-</gazebo>
-<gazebo reference="motor_support_fl_1">
-  <material>${silver_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
-</gazebo>
-<gazebo reference="motor_support_bl_1">
-  <material>${silver_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
-</gazebo>
-<gazebo reference="motor_support_br_1">
-  <material>${silver_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
-</gazebo>
-
-<!-- ===================== chassis boxes + deck ===================== -->
-<gazebo reference="box_right_1">
-  <material>${body_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
-</gazebo>
-<gazebo reference="box_left_1">
-  <material>${body_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
+  <gravity>true</gravity>
 </gazebo>
 <gazebo reference="box_front_1">
-  <material>${body_color}</material>
+  <material>${extrusion_color}</material>
   <mu1>0.2</mu1>
   <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
+  <self_collide>false</self_collide>
 </gazebo>
 <gazebo reference="box_back_1">
-  <material>${body_color}</material>
+  <material>${extrusion_color}</material>
   <mu1>0.2</mu1>
   <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
+  <self_collide>false</self_collide>
 </gazebo>
-<gazebo reference="top_plate_1">
-  <material>${body_color}</material>
+<gazebo reference="box_left_1">
+  <material>${extrusion_color}</material>
   <mu1>0.2</mu1>
   <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
+  <self_collide>false</self_collide>
 </gazebo>
-
-<!-- ===================== bumpers ===================== -->
-<gazebo reference="bumper_fl_1">
-  <material>${accent_color}</material>
+<gazebo reference="box_right_1">
+  <material>${extrusion_color}</material>
   <mu1>0.2</mu1>
   <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
-</gazebo>
-<gazebo reference="bumper_fr_1">
-  <material>${accent_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
-</gazebo>
-<gazebo reference="bumper_bl_1">
-  <material>${accent_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
-</gazebo>
-<gazebo reference="bumper_br_1">
-  <material>${accent_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
+  <self_collide>false</self_collide>
 </gazebo>
 
-<!-- ===================== mounts / accessories ===================== -->
-<gazebo reference="realsense_support_1">
-  <material>${silver_color}</material>
-  <mu1>0.2</mu1>
-  <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
+<!-- ============================== drivetrain ==============================
+     The rims carry the traction contact: high mu1 along fdir1, low mu2
+     across, stiff contact (kp/kd). The hubs are non-colliding internals. -->
+<gazebo reference="wheel_front_left_1">
+  <material>${motor_color}</material>
+  <mu1>1.0</mu1>
+  <mu2>0.1</mu2>
+  <fdir1>1 0 0</fdir1>
+  <kp>10000000.0</kp>
+  <kd>1.0</kd>
+  <self_collide>false</self_collide>
 </gazebo>
-<gazebo reference="imu_1">
+<gazebo reference="wheel_front_right_1">
+  <material>${motor_color}</material>
+  <mu1>1.0</mu1>
+  <mu2>0.1</mu2>
+  <fdir1>1 0 0</fdir1>
+  <kp>10000000.0</kp>
+  <kd>1.0</kd>
+  <self_collide>false</self_collide>
+</gazebo>
+<gazebo reference="wheel_back_left_1">
+  <material>${motor_color}</material>
+  <mu1>1.0</mu1>
+  <mu2>0.1</mu2>
+  <fdir1>1 0 0</fdir1>
+  <kp>10000000.0</kp>
+  <kd>1.0</kd>
+  <self_collide>false</self_collide>
+</gazebo>
+<gazebo reference="wheel_back_right_1">
+  <material>${motor_color}</material>
+  <mu1>1.0</mu1>
+  <mu2>0.1</mu2>
+  <fdir1>1 0 0</fdir1>
+  <kp>10000000.0</kp>
+  <kd>1.0</kd>
+  <self_collide>false</self_collide>
+</gazebo>
+
+<gazebo reference="wheel_hub_front_left_1">
   <material>${motor_color}</material>
   <mu1>0.2</mu1>
   <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
+  <self_collide>false</self_collide>
 </gazebo>
-<gazebo reference="connector_mask_1">
-  <material>${silver_color}</material>
+<gazebo reference="wheel_hub_front_right_1">
+  <material>${motor_color}</material>
   <mu1>0.2</mu1>
   <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
+  <self_collide>false</self_collide>
 </gazebo>
-<gazebo reference="connector_cap_l_1">
-  <material>${silver_color}</material>
+<gazebo reference="wheel_hub_back_left_1">
+  <material>${motor_color}</material>
   <mu1>0.2</mu1>
   <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
+  <self_collide>false</self_collide>
 </gazebo>
-<gazebo reference="connector_cap_r_1">
-  <material>${silver_color}</material>
+<gazebo reference="wheel_hub_back_right_1">
+  <material>${motor_color}</material>
   <mu1>0.2</mu1>
   <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
+  <self_collide>false</self_collide>
 </gazebo>
-<gazebo reference="baseus_1">
-  <material>${silver_color}</material>
+
+<gazebo reference="mount_front_left_1">
+  <material>${plastic_color}</material>
   <mu1>0.2</mu1>
   <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
+  <self_collide>false</self_collide>
 </gazebo>
-<gazebo reference="baseus_front_holder_1">
-  <material>${silver_color}</material>
+<gazebo reference="mount_front_right_1">
+  <material>${plastic_color}</material>
   <mu1>0.2</mu1>
   <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
+  <self_collide>false</self_collide>
 </gazebo>
-<gazebo reference="baseus_back_holder_1">
-  <material>${silver_color}</material>
+<gazebo reference="mount_back_left_1">
+  <material>${plastic_color}</material>
   <mu1>0.2</mu1>
   <mu2>0.2</mu2>
-  <self_collide>true</self_collide>
+  <self_collide>false</self_collide>
+</gazebo>
+<gazebo reference="mount_back_right_1">
+  <material>${plastic_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+
+<!-- =============================== bumpers =============================== -->
+<gazebo reference="bumper_front_left_1">
+  <material>${plastic_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+<gazebo reference="bumper_front_right_1">
+  <material>${plastic_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+<gazebo reference="bumper_back_left_1">
+  <material>${plastic_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+<gazebo reference="bumper_back_right_1">
+  <material>${plastic_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+
+<!-- ============================ payload deck ============================ -->
+<gazebo reference="standoff_front_left_1">
+  <material>${hardware_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+<gazebo reference="standoff_front_right_1">
+  <material>${hardware_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+<gazebo reference="standoff_back_left_1">
+  <material>${hardware_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+<gazebo reference="standoff_back_right_1">
+  <material>${hardware_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+<gazebo reference="top_plate_1">
+  <material>${plate_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+
+<!-- ========================= mounts / accessories ========================= -->
+<gazebo reference="lidar_mount_1">
+  <material>${plastic_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+<gazebo reference="lidar_1">
+  <material>${motor_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+<gazebo reference="camera_edge_bracket_1">
+  <material>${plastic_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+<xacro:if value="${'$(arg camera)' == 'realsense'}">
+  <gazebo reference="camera_realsense_1">
+    <material>${electronics_color}</material>
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <self_collide>false</self_collide>
+  </gazebo>
+</xacro:if>
+<xacro:if value="${'$(arg camera)' == 'oak_d'}">
+  <gazebo reference="camera_luxonis_1">
+    <material>${electronics_color}</material>
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <self_collide>false</self_collide>
+  </gazebo>
+</xacro:if>
+<gazebo reference="jetson_mount_1">
+  <material>${plastic_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+<gazebo reference="orin_simplified_1">
+  <material>${electronics_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+<gazebo reference="orp_link101_mount_1">
+  <material>${plastic_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
+</gazebo>
+<gazebo reference="link_101_1">
+  <material>${pcb_color}</material>
+  <mu1>0.2</mu1>
+  <mu2>0.2</mu2>
+  <self_collide>false</self_collide>
 </gazebo>
 
 </robot>

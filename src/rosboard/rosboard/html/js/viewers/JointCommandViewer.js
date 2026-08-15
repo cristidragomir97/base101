@@ -21,7 +21,14 @@ class JointCommandViewer extends Viewer {
 
   onCreate() {
     // controller groups: title -> [command topic, ordered joints]
+    // Groups for hardware that isn't loaded hide themselves (see onData), so
+    // every variant's groups can live here side by side: the single-arm
+    // base101_arm stack and the tower/dual-arm stack never coexist.
     this.groups = {
+      "arm":           ["/arm_controller/commands",
+                        ["arm_joint_base", "arm_joint_shoulder", "arm_joint_elbow",
+                         "arm_joint_wrist_tilt", "arm_joint_wrist_roll"]],
+      "gripper":       ["/gripper_controller/commands", ["arm_6"]],
       "tower":         ["/tower_controller/commands",
                         ["lift", "head_pan", "head_tilt"]],
       "left arm":      ["/left_arm_controller/commands",
@@ -33,6 +40,7 @@ class JointCommandViewer extends Viewer {
     };
     // slider ranges; joints not listed get +/- pi
     this.ranges = {
+      "arm_6": [0.0, 2.14],
       "lift": [-0.26, 0.26],
       "head_tilt": [-1.57, 1.57],
       "left_arm_6": [0.0, 2.14],

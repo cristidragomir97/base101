@@ -66,6 +66,7 @@ def _setup(context, *args, **kwargs):
     robot_description = xacro.process_file(
         urdf_file, mappings={
             'simulator': 'gazebo',
+            'camera': LaunchConfiguration('camera').perform(context),
         }
     ).toxml()
 
@@ -226,6 +227,13 @@ def generate_launch_description():
             'rosboard_port',
             default_value='8888',
             description='HTTP/WS port for rosboard.',
+        ),
+        DeclareLaunchArgument(
+            'camera',
+            default_value='realsense',
+            choices=['realsense', 'oak_d'],
+            description='Depth module on the front bracket. Only changes the '
+                        'mesh and the simulated FOV; topics stay /base_camera/*.',
         ),
         OpaqueFunction(function=_setup),
     ])

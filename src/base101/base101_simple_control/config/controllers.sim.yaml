@@ -20,7 +20,7 @@ diff_drive_controller:
     right_wheel_names: ['front_right_wheel_joint', 'back_right_wheel_joint']
 
     # Track width and wheel radius for the simple variant (DDSM210 hub motor).
-    wheel_separation: 0.2966  # m — wheel-contact track of the recentred URDF (+/-0.1483 m)
+    wheel_separation: 0.2899  # m — rim mid-planes of the chassis URDF (+/-0.14495 m)
     wheel_radius:     0.0363  # m — 72.6 mm DDSM210 wheel diameter / 2
 
     wheel_separation_multiplier: 1.0

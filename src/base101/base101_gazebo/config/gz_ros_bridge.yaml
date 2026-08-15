@@ -2,18 +2,20 @@
 # /clock is bridged separately (in the launch file) so we can keep it in a
 # dedicated single-topic bridge node.
 
-# 2D laser from the gpu_lidar sensor on lidar_1.
+# 2D laser from the gpu_lidar sensor on lidar_frame.
 - topic_name: "/scan"
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
 
-# Camera info for base_camera. The image stream itself goes through the
-# dedicated ros_gz_image bridge (started in the launch file).
+# Camera info for base_camera (the sensor sits on camera_link, whichever
+# module the `camera` arg selected). The image streams themselves go through
+# the dedicated ros_gz_image bridges started in the launch file.
 - topic_name: "/base_camera/camera_info"
   ros_type_name: "sensor_msgs/msg/CameraInfo"
   gz_type_name: "gz.msgs.CameraInfo"
 
-# IMU on base_link: consumed by the EKF (base101_slam) and robocore.
+# IMU on imu_link (the chip is on the link101 board, not at base_link):
+# consumed by the EKF (base101_slam) and robocore.
 - topic_name: "/sensors/imu"
   ros_type_name: "sensor_msgs/msg/Imu"
   gz_type_name: "gz.msgs.IMU"

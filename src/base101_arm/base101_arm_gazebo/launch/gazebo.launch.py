@@ -12,11 +12,12 @@ base101 packages stay arm-free.
 Args:
     variant   simple           hardware variant (default simple)
     arm       true | false      mount one mod101 arm (needs mod101 underlay)
-    arm_tool  <name>            mod101 end-effector (default jaws)
+    arm_tool  <name>            mod101 end-effector (default: the configurator's)
     world     <path or name>    .sdf world (default sticky_floor.sdf)
 """
 
 import os
+import re
 
 import xacro
 from ament_index_python.packages import (
@@ -38,11 +39,29 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+
+def _configured_tool():
+    """The end-effector the mod101 configurator last saved.
+
+    Used as the launch default so `ros2 launch` agrees with the configurator
+    rather than pinning one tool. `arm_tool:=parallel` still overrides, and if
+    the mod101 underlay isn't sourced (arm:=false builds fine without it) this
+    falls back to the macro's own default.
+    """
+    try:
+        cfg = os.path.join(get_package_share_directory('mod101_description'),
+                           'urdf', 'mod101_config.xacro')
+        m = re.search(r'<xacro:arg\s+name="tool"\s+default="([^"]+)"', open(cfg).read())
+        return m.group(1) if m else 'jaws'
+    except Exception:
+        return 'jaws'
+
 def _setup(context, *args, **kwargs):
     world = LaunchConfiguration('world').perform(context)
     rosboard_port = LaunchConfiguration('rosboard_port').perform(context)
     arm = LaunchConfiguration('arm').perform(context) == 'true'
     arm_tool = LaunchConfiguration('arm_tool').perform(context)
+    arm_control = LaunchConfiguration('arm_control').perform(context)
 
     pkg_manip       = get_package_share_directory('base101_arm_description')
     pkg_control     = get_package_share_directory('base101_control')
@@ -177,11 +196,17 @@ def _setup(context, *args, **kwargs):
     # Arm controllers: their params are already loaded onto the
     # controller_manager by the gz_ros2_control plugin (base101_arm_control/
     # config/controllers.sim.yaml), so we just spawn them by name.
+    #
+    # Both variants of each controller claim the same joints, so exactly one
+    # may be active: `sliders` gives the Float64MultiArray position controllers
+    # the web UIs publish to, `moveit` gives the FollowJointTrajectory ones
+    # move_group needs. base101_arm_moveit_config's demo launch passes moveit.
     post_jsb_spawners = [spawn_diff_drive]
     if arm:
-        arm_controllers = ['arm_controller']
+        suffix = '_trajectory_controller' if arm_control == 'moveit' else '_controller'
+        arm_controllers = ['arm' + suffix]
         if arm_tool != 'none':
-            arm_controllers += ['gripper_controller']
+            arm_controllers += ['gripper' + suffix]
         post_jsb_spawners += [Node(
             package='controller_manager',
             executable='spawner',
@@ -226,10 +251,16 @@ def generate_launch_description():
         DeclareLaunchArgument('arm', default_value='true',
                               choices=['true', 'false'],
                               description='Mount one mod101 arm (needs mod101 underlay).'),
-        DeclareLaunchArgument('arm_tool', default_value='jaws',
+        DeclareLaunchArgument(
+            'arm_tool', default_value=_configured_tool(),
                               description='mod101 end-effector (mod101_tool_<name>).'),
         DeclareLaunchArgument('world', default_value='sticky_floor.sdf',
                               description='SDF world (name in base101_gazebo/worlds or absolute path).'),
+        DeclareLaunchArgument('arm_control', default_value='sliders',
+                              choices=['sliders', 'moveit'],
+                              description='Arm controllers to spawn: sliders = position '
+                                          '(Float64MultiArray, what the web UIs drive), '
+                                          'moveit = trajectory (FollowJointTrajectory).'),
         DeclareLaunchArgument('rosboard', default_value='true',
                               choices=['true', 'false'],
                               description='Run rosboard web dashboard.'),

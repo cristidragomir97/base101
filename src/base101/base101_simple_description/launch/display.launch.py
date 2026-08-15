@@ -18,7 +18,10 @@ def _launch_setup(context, *args, **kwargs):
     # robot_state_publisher sees a pure URDF. The arm/tower variants have their
     # own display launches.
     robot_urdf = xacro.process_file(
-        xacro_file, mappings={'simulator': 'none'}
+        xacro_file, mappings={
+            'simulator': 'none',
+            'camera': LaunchConfiguration('camera').perform(context),
+        }
     ).toxml()
 
     rviz_config_file = os.path.join(rviz_dir, 'config', 'display.rviz')
@@ -59,6 +62,12 @@ def generate_launch_description():
             'gui',
             default_value='True',
             description='Use joint_state_publisher_gui instead of joint_state_publisher.',
+        ),
+        DeclareLaunchArgument(
+            'camera',
+            default_value='realsense',
+            choices=['realsense', 'oak_d'],
+            description='Depth module on the front bracket.',
         ),
         OpaqueFunction(function=_launch_setup),
     ])

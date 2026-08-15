@@ -38,7 +38,7 @@ NAV=$(tmux split-window -v -t "$GAZEBO" -P -F '#{pane_id}')
 AGENT=$(tmux split-window -v -t "$SLAM" -P -F '#{pane_id}')
 
 tmux send-keys -t "$GAZEBO" \
-    "$SETUP && ros2 launch base101_gazebo gazebo.launch.py tower:=true arms:=true rosboard:=false" Enter
+    "$SETUP && ros2 launch base101_simple_gazebo gazebo.launch.py rosboard:=false" Enter
 tmux send-keys -t "$SLAM" \
     "$SETUP && sleep 10 && ros2 launch base101_slam slam.launch.py use_sim_time:=true" Enter
 tmux send-keys -t "$NAV" \

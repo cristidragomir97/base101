@@ -1,6 +1,47 @@
 <?xml version="1.0" ?>
 <robot name="base101" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
+  <!-- Palette is by material, not by part, so a new link picks its colour from
+       what it is made of. Gazebo equivalents are in chassis.gazebo and must be
+       kept in step. -->
+
+  <!-- 60x20 extrusion, black anodized: reads dark grey under light. -->
+  <material name="extrusion_grey">
+    <color rgba="0.220 0.225 0.235 1.0"/>
+  </material>
+
+  <!-- 3 mm CNC aluminium: the base deck and the payload plate. -->
+  <material name="plate_aluminum">
+    <color rgba="0.770 0.780 0.790 1.0"/>
+  </material>
+
+  <!-- Everything printed: PLA-CF mounts and brackets, TPU bumpers. -->
+  <material name="plastic_black">
+    <color rgba="0.075 0.075 0.080 1.0"/>
+  </material>
+
+  <!-- Standoffs and fasteners. -->
+  <material name="hardware_steel">
+    <color rgba="0.600 0.605 0.620 1.0"/>
+  </material>
+
+  <!-- Bare PCB (the link101 carrier board). -->
+  <material name="pcb_green">
+    <color rgba="0.055 0.260 0.140 1.0"/>
+  </material>
+
+  <!-- Anodised/moulded electronics housings: cameras, the Orin. -->
+  <material name="electronics_grey">
+    <color rgba="0.300 0.310 0.330 1.0"/>
+  </material>
+
+  <!-- DDSM210 hub motors and the lidar can. -->
+  <material name="motor_black">
+    <color rgba="0.050 0.050 0.050 1.0"/>
+  </material>
+
+  <!-- Kept for the add-on packages (base101_arm, the parked tower) and the
+       mod101 macro, which reference these names directly. -->
   <material name="silver">
     <color rgba="0.700 0.700 0.700 1.0"/>
   </material>
@@ -11,10 +52,6 @@
 
   <material name="accent_green">
     <color rgba="0.180 0.580 0.270 1.0"/>
-  </material>
-
-  <material name="motor_black">
-    <color rgba="0.050 0.050 0.050 1.0"/>
   </material>
 
 </robot>

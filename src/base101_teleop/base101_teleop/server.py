@@ -4,6 +4,8 @@
 Serves a single slider page (default http://localhost:8700/) and publishes
 straight to the existing controller command topics:
 
+    /arm_controller/commands            [arm_joint_base .. arm_joint_wrist_roll]
+    /gripper_controller/commands        [arm_6]
     /tower_controller/commands          [lift, head_pan, head_tilt]
     /left_arm_controller/commands       [left_arm_1 .. left_arm_5]
     /right_arm_controller/commands      [right_arm_1 .. right_arm_5]
@@ -32,6 +34,10 @@ from std_msgs.msg import Float64MultiArray
 # target name -> (topic, ordered joint list). The UI keeps a value per joint
 # and always publishes the full group array.
 GROUPS = {
+    'arm':           ('/arm_controller/commands',
+                      ['arm_joint_base', 'arm_joint_shoulder', 'arm_joint_elbow',
+                       'arm_joint_wrist_tilt', 'arm_joint_wrist_roll']),
+    'gripper':       ('/gripper_controller/commands', ['arm_6']),
     'tower':         ('/tower_controller/commands', ['lift', 'head_pan', 'head_tilt']),
     'left_arm':      ('/left_arm_controller/commands',
                       ['left_arm_1', 'left_arm_2', 'left_arm_3', 'left_arm_4', 'left_arm_5']),
@@ -43,6 +49,7 @@ GROUPS = {
 
 # slider ranges per joint name (min, max); anything not listed gets +/-pi.
 RANGES = {
+    'arm_6': (0.0, 2.14),
     'lift': (-0.26, 0.26),
     'head_tilt': (-1.57, 1.57),
     'left_arm_6': (0.0, 2.14),

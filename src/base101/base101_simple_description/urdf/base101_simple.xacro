@@ -11,6 +11,11 @@
        ros2_control or extension tags). -->
   <xacro:arg name="simulator" default="gazebo"/>
 
+  <!-- Which module is on the front bracket: realsense | oak_d. Declared by
+       chassis.xacro too; repeated here so the variant's own argument list is
+       complete and it can be overridden per launch. -->
+  <xacro:arg name="camera" default="realsense"/>
+
   <!-- Shared chassis: chassis links + materials. -->
   <xacro:include filename="$(find base101_description)/urdf/materials.xacro"/>
   <xacro:include filename="$(find base101_description)/urdf/chassis.xacro"/>

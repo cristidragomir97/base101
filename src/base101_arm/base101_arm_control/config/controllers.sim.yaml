@@ -20,12 +20,22 @@ controller_manager:
     gripper_controller:
       type: position_controllers/JointGroupPositionController
 
+    # MoveIt executes over FollowJointTrajectory, which
+    # JointGroupPositionController does not offer. Same arrangement mod101 uses
+    # standalone: declare both, spawn one. Each pair claims the same joints, so
+    # only one of each may be active — the gazebo launch's `arm_control` arg
+    # picks (sliders => the position pair, moveit => these).
+    arm_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+    gripper_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
 diff_drive_controller:
   ros__parameters:
     left_wheel_names:  ['front_left_wheel_joint',  'back_left_wheel_joint']
     right_wheel_names: ['front_right_wheel_joint', 'back_right_wheel_joint']
 
-    wheel_separation: 0.2966  # m — wheel-contact track of the recentred URDF (+/-0.1483 m)
+    wheel_separation: 0.2899  # m — rim mid-planes of the chassis URDF (+/-0.14495 m)
     wheel_radius:     0.0363  # m — 72.6 mm DDSM210 wheel diameter / 2
 
     wheel_separation_multiplier: 1.0
@@ -57,7 +67,11 @@ diff_drive_controller:
 
 arm_controller:
   ros__parameters:
-    joints: [arm_1, arm_2, arm_3, arm_4, arm_5]
+    # The mod101 macro is instantiated with prefix "arm_" (arm.xacro), so its
+    # joints are arm_<mod101 name>. These must match the ros2_control block the
+    # macro emits, not the old arm_1..arm_5 naming.
+    joints: [arm_joint_base, arm_joint_shoulder, arm_joint_elbow,
+             arm_joint_wrist_tilt, arm_joint_wrist_roll]
     command_interfaces:
       - position
     state_interfaces:
@@ -72,3 +86,30 @@ gripper_controller:
     state_interfaces:
       - position
     open_loop_control: true
+
+# --- trajectory variants, for MoveIt execution --------------------------------
+# Joint names are the arm_-prefixed ones the mod101_arm macro emits; the tool's
+# joint is arm_6 whichever tool is fitted.
+arm_trajectory_controller:
+  ros__parameters:
+    joints: [arm_joint_base, arm_joint_shoulder, arm_joint_elbow,
+             arm_joint_wrist_tilt, arm_joint_wrist_roll]
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    open_loop_control: true
+    allow_partial_joints_goal: false
+    allow_integration_in_goal_trajectories: true
+
+gripper_trajectory_controller:
+  ros__parameters:
+    joints: [arm_6]
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    allow_partial_joints_goal: false
+    allow_integration_in_goal_trajectories: true

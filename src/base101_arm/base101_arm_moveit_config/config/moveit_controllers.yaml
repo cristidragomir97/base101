@@ -1,0 +1,38 @@
+# How MoveIt hands trajectories to ros2_control on the composed robot.
+#
+# Unlike mod101 standalone, the gripper entry is NOT merged in from the tool
+# package at launch time: mod101_tool_*/config/moveit_controllers.yaml names the
+# unprefixed joint "6", and on base101 that joint is arm_6. Both controllers are
+# declared in base101_arm_control/config/controllers.sim.yaml instead, so they
+# are listed together here.
+#
+# These are the *trajectory* controllers. base101_arm_control also declares
+# arm_controller / gripper_controller, which take Float64MultiArray for the web
+# slider UIs and which MoveIt cannot drive. Each pair claims the same joints, so
+# only one may be active — the gazebo launch's `arm_control` arg picks
+# (`arm_control:=moveit` spawns these).
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+
+moveit_simple_controller_manager:
+  controller_names:
+    - arm_trajectory_controller
+    - gripper_trajectory_controller
+
+  arm_trajectory_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints:
+      - arm_joint_base
+      - arm_joint_shoulder
+      - arm_joint_elbow
+      - arm_joint_wrist_tilt
+      - arm_joint_wrist_roll
+
+  # Present for every tool except `none`, which has no actuated gripper joint.
+  gripper_trajectory_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints:
+      - arm_6

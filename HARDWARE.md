@@ -102,7 +102,10 @@ Standalone driving (no nav) keeps `enable_odom_tf: true`.
 
 ## Tower / arms
 
-The cross tower and dual mod101 arms live in `base101_dual_arm` and are
-**sim-only** for now — there is no real actuator driver wired for the tower's
-lift / pan / tilt yet. The Axon firmware does expose `/motor_manager/arm_cmd`
-(ST3215 servos) for a future arm bring-up.
+The deck-mounted mod101 arm (`base101_arm_*`) is **sim-only** for now. The Axon
+firmware does expose `/motor_manager/arm_cmd` (ST3215 servos) for a future arm
+bring-up.
+
+The cross tower is parked out of the build in [`attic/`](attic/README.md) — its
+deck mount no longer matches the re-exported chassis, and no real driver was
+ever wired for its lift / pan / tilt.

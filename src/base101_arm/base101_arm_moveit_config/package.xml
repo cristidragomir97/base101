@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>base101_arm_moveit_config</name>
+  <version>0.0.0</version>
+  <description>
+    MoveIt2 semantics for the base101 "arm" variant: the shared chassis plus one
+    mod101 arm on the deck. Reuses mod101's prefix-parameterised arm SRDF macro
+    and adds what only the composed robot can know — a base_link anchor and the
+    self-collision pairs between the arm and the chassis it is bolted to.
+  </description>
+  <maintainer email="cristidragomir97@gmail.com">Cristi Dragomir</maintainer>
+  <license>TODO: License declaration</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>base101_arm_description</exec_depend>
+  <exec_depend>base101_arm_control</exec_depend>
+  <exec_depend>base101_arm_gazebo</exec_depend>
+  <!-- Not rosdep keys: the mod101 underlay must be built and sourced first.
+       Pass `skip-keys` to rosdep install if you use it. -->
+  <exec_depend>mod101_description</exec_depend>
+  <exec_depend>mod101_moveit_config</exec_depend>
+
+  <exec_depend>moveit_ros_move_group</exec_depend>
+  <exec_depend>moveit_planners_ompl</exec_depend>
+  <exec_depend>moveit_simple_controller_manager</exec_depend>
+  <exec_depend>moveit_ros_visualization</exec_depend>
+  <exec_depend>pick_ik</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>xacro</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

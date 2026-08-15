@@ -64,8 +64,9 @@ ROS 2 Jazzy workspace. The `diff_drive_controller` handles skid-steer kinematics
 
 The workspace is a **shared core** plus one self-contained stack per
 **variant** (`description` / `gazebo` / `control`). Variants are grouped into
-folders under `src/` (`base101/`, `base101_arm/`, `base101_tower/`); colcon
-discovers packages recursively, so the folders are purely organisational.
+folders under `src/` (`base101/`, `base101_arm/`); colcon discovers packages
+recursively, so the folders are purely organisational. Packages parked out of
+the build live in [`attic/`](attic/README.md).
 
 **Core / shared** — `src/base101/`
 
@@ -81,8 +82,8 @@ discovers packages recursively, so the folders are purely organisational.
 | Variant | Folder | Adds to the chassis | Packages |
 |---|---|---|---|
 | **simple** | `src/base101/` | nothing (the bare base robot) | `base101_simple_{description,gazebo,control}` |
-| **arm** | `src/base101_arm/` | hex standoff deck + 1 deck-mounted mod101 arm | `base101_arm_{description,gazebo,control}` |
-| **tower** | `src/base101_tower/` | lift column + pan/tilt head + optional 2 bracket arms | `base101_tower_{description,gazebo,control}` |
+| **arm** | `src/base101_arm/` | 1 mod101 arm on the chassis deck | `base101_arm_{description,gazebo,control,moveit_config}` |
+| ~~tower~~ | `attic/base101_tower/` | *parked* — lift column + pan/tilt head + 2 bracket arms | not built ([why](attic/README.md)) |
 
 The simple variant's `*_control` also carries the real-hardware bringup (`control_stack.launch.py`, the Axon hardware xacro) — see [`HARDWARE.md`](HARDWARE.md).
 
@@ -118,39 +119,32 @@ graph TD
         ACTRL[base101_arm_control]
     end
 
-    subgraph tower["src/base101_tower/ — tower variant"]
-        TDESC[base101_tower_description]
-        TGZ[base101_tower_gazebo]
-        TCTRL[base101_tower_control]
-    end
-
     MOD["mod101_description<br/><i>(underlay)</i>"]
 
     %% every variant description includes the shared chassis
     SDESC -->|includes chassis.xacro| DESC
     ADESC -->|includes chassis.xacro| DESC
-    TDESC -->|includes chassis.xacro| DESC
 
-    %% arm/tower pull the mod101 arm macro
+    %% the arm variant pulls the mod101 arm macro
     ADESC -->|mod101_arm macro| MOD
-    TDESC -->|mod101_arm macro| MOD
 
     %% control: hardware bridge + sim controller path
     SCTRL -->|hardware xacro includes| SDESC
     SCTRL --> PLUGIN
     SDESC -.->|gz plugin loads controllers.sim.yaml| SCTRL
     ADESC -.->|gz plugin loads controllers.sim.yaml| ACTRL
-    TDESC -.->|gz plugin loads controllers.sim.yaml| TCTRL
 
     %% gazebo bringup ties description + control + sim-common
     SGZ --> SDESC & SCTRL & GZ & CTRL
     AGZ --> ADESC & ACTRL & GZ & CTRL
-    TGZ --> TDESC & TCTRL & GZ & CTRL
 ```
 
 Solid arrows are build/`xacro:include` dependencies; dashed arrows are the
 runtime `gz_ros2_control` controller-file lookup (resolved at Gazebo spawn,
 carried as a manifest dep by the `*_gazebo` package to avoid a cycle).
+
+Manual test procedures for every variant, tool and launch combination are in
+[`docs/testing.md`](docs/testing.md).
 
 ### Quickstart
 
@@ -159,13 +153,20 @@ colcon build --symlink-install
 source install/setup.bash
 ros2 launch base101_simple_gazebo gazebo.launch.py                    # bare chassis, sticky_floor world
 ros2 launch base101_arm_gazebo    gazebo.launch.py arm:=true          # chassis + 1 mod101 arm
-ros2 launch base101_tower_gazebo  gazebo.launch.py arms:=true         # chassis + tower + 2 arms
 ros2 launch base101_simple_gazebo gazebo.launch.py world:=empty.sdf   # pick a world
+ros2 launch base101_simple_gazebo gazebo.launch.py camera:=oak_d      # Luxonis OAK-D instead of the D435
+ros2 launch base101_simple_description display.launch.py              # rviz only, no sim
 ```
 
 Web teleop is at `http://localhost:8888/` (rosboard) once the sim is up.
-(The arm/tower variants need the [mod101](https://github.com/robocore-dev/mod101)
+(The arm variant needs the [mod101](https://github.com/robocore-dev/mod101)
 underlay built and sourced first.)
+
+`camera:=realsense|oak_d` picks which depth module hangs off the front bracket
+(default `realsense`). It swaps the mesh and the simulated FOV only — the
+topics stay `/base_camera/*` and the frames stay `camera_link` /
+`camera_optical_frame` either way. Both `gazebo.launch.py` and
+`display.launch.py` take it.
 
 For the **real robot** (Axon 2 firmware over zenoh), see [`HARDWARE.md`](HARDWARE.md):
 
@@ -174,55 +175,30 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 launch base101_simple_control control_stack.launch.py
 ```
 
-### Cross tower (optional)
+### Cross tower (parked)
 
-An optional vertical tower (merged from the former `base101_cross_description`
-CAD export) bolts onto the top plate: a column with a prismatic **lift**
-carrying a crossbeam with two arm-mount brackets, and a **pan/tilt head**
-with a camera on top. It's the **tower** variant — `base101_tower_description`
-includes the shared chassis and overlays the tower (sim-only for now):
+The vertical tower — column with a prismatic **lift**, crossbeam with two
+arm-mount brackets, **pan/tilt head** with a camera — is **parked in
+[`attic/base101_tower/`](attic/README.md)** and is not built. It bolted onto
+`top_plate_1`, and the 2026-08 chassis re-export shrank that deck from
+340 × 240 mm to 180 × 240 mm and raised it 48 mm onto standoffs, so its mount
+origin no longer lands anywhere real. The lift was rough to begin with.
 
-```bash
-ros2 launch base101_tower_gazebo  gazebo.launch.py    # tower, no arms
-ros2 launch base101_tower_description display.launch.py   # rviz only
-```
+To revive it: `git mv attic/base101_tower src/base101_tower`, then re-derive
+`tower_mount_xyz` in `urdf/tower.xacro` against the new deck. Background:
+[`docs/worklogs/tower.md`](docs/worklogs/tower.md).
 
-| Joint | Type | Range | Notes |
-|---|---|---|---|
-| `lift` | prismatic | ±0.26 m | Axis points **down**: `+0.26` = bottom of stroke, `-0.26` = top, `0` = mid-travel. Effort limit 400 N — sized for the fully loaded carriage (crossbeam + brackets + two arms). |
-| `head_pan` | continuous | — | `+` = CCW/left (REP-103 yaw). Axis re-anchored on the pan motor shaft (the CAD export had it ~15 cm off). |
-| `head_tilt` | continuous | — | `+y` axis. |
+### mod101 arm
 
-All three are position-controlled by **`tower_controller`**
-(`position_controllers/JointGroupPositionController`, spawned automatically
-by the `base101_tower_gazebo` launch):
-
-```bash
-ros2 topic pub /tower_controller/commands std_msgs/msg/Float64MultiArray \
-  "{data: [0.0, 0.0, 0.0]}"   # [lift, head_pan, head_tilt]
-```
-
-The head camera publishes `/head_camera/image_raw` (bridged like the base
-camera). The tower URDF lives in `base101_tower_description/urdf/tower.xacro`
-(+ `tower.gazebo`, `tower.ros2control`), meshes in
-`base101_tower_description/meshes/tower/`; it bolts onto the chassis'
-`top_plate_1` deck link. The `left_arm_bracket_1` / `right_arm_bracket_1`
-links on the crossbeam are the mount points for two mod101 arms — see the next
-section. Full merge/debug notes: [`docs/worklogs/tower.md`](docs/worklogs/tower.md).
-
-### Dual mod101 arms (optional, `arms:=true`)
-
-Two [mod101](https://github.com/robocore-dev/mod101) arms mount on the
-tower's crossbeam brackets. The mod101 repo stays standalone — its arm is a
-prefix-parameterised xacro macro (`mod101_arm`, see
-`mod101_description/urdf/mod101_macro.xacro`) that this repo instantiates
-twice in `base101_tower_description/urdf/arms.xacro`, producing joints
-`left_arm_1…6` and `right_arm_1…6`. (The **arm** variant —
-`base101_arm_description` — instantiates the same macro once, deck-mounted,
-producing `arm_1…6`.)
+The [mod101](https://github.com/robocore-dev/mod101) repo stays standalone —
+its arm is a prefix-parameterised xacro macro (`mod101_arm`, see
+`mod101_description/urdf/mod101_macro.xacro`). The **arm** variant
+(`base101_arm_description`) instantiates it once, deck-mounted, producing
+joints `arm_1…6`. (The parked tower instantiated it twice on the crossbeam
+brackets, as `left_arm_1…6` / `right_arm_1…6`.)
 
 **Build** (mod101 first, then this workspace as an overlay — only needed
-when you actually use `arms:=true`):
+when you actually use `arm:=true`):
 
 ```bash
 cd ~/Work/mod101  && colcon build --symlink-install && source install/setup.bash
@@ -234,31 +210,51 @@ source install/setup.bash
 (The `Python3_EXECUTABLE` pin guards against a stray non-system python on
 `PATH` breaking ament's package.xml parsing and `rosidl`'s `em` import — see
 the project-level `~/.colcon/defaults.yaml` note in [`HARDWARE.md`](HARDWARE.md).
-The `mod101_description` exec_depend in `base101_arm_description` /
-`base101_tower_description` is not a rosdep key — pass
-`--skip-keys mod101_description` to `rosdep install` if you use it.)
+The `mod101_description` exec_depend in `base101_arm_description` is not a
+rosdep key — pass `--skip-keys mod101_description` to `rosdep install` if you
+use it.)
 
 **Launch:**
 
 ```bash
-ros2 launch base101_tower_gazebo gazebo.launch.py arms:=true                  # jaws grippers
-ros2 launch base101_tower_gazebo gazebo.launch.py arms:=true arm_tool:=parallel
-ros2 launch base101_tower_description display.launch.py arms:=true            # rviz only
+ros2 launch base101_arm_gazebo gazebo.launch.py arm:=true                   # jaws gripper
+ros2 launch base101_arm_gazebo gazebo.launch.py arm:=true arm_tool:=parallel
+ros2 launch base101_arm_description display.launch.py arm:=true            # rviz only
 ```
 
-**Controllers** (all `position_controllers/JointGroupPositionController`,
+`arm_tool` defaults to whatever the mod101 configurator last saved, as do the
+rail lengths and servo mounts — `mod101_config.xacro` is the single source of
+truth and base101 reads it, so reconfiguring the arm and rebuilding is enough.
+
+**Motion planning** (`base101_arm_moveit_config`):
+
+```bash
+ros2 launch base101_arm_moveit_config demo.launch.py     # gazebo + move_group
+```
+
+This exists because mod101's own MoveIt config only knows arm-vs-arm
+collisions; the arm can reach every part of the chassis it sits on, so the
+composed robot needs its own self-collision matrix. The planning scene knows
+the robot but not the world — see
+[`docs/obstacle-awareness.md`](docs/obstacle-awareness.md) for where perceived
+obstacles should live relative to a picking layer. Note the sim must run with
+`arm_control:=moveit` (the demo launch does this) to spawn the
+`FollowJointTrajectory` controllers instead of the `Float64MultiArray` ones the
+web sliders use — see
+[`base101_arm_moveit_config/README.md`](src/base101_arm/base101_arm_moveit_config/README.md).
+
+**Controllers** (arm/gripper are `position_controllers/JointGroupPositionController`,
 commands are `std_msgs/Float64MultiArray` on `/<name>/commands`):
 
 | Controller | Joints |
 |---|---|
-| `tower_controller` | `lift, head_pan, head_tilt` |
-| `left_arm_controller` / `right_arm_controller` | `<side>_arm_1 … _5` |
-| `left_gripper_controller` / `right_gripper_controller` | `<side>_arm_6` |
+| `arm_controller` | `arm_joint_base, arm_joint_shoulder, arm_joint_elbow, arm_joint_wrist_tilt, arm_joint_wrist_roll` |
+| `gripper_controller` | `arm_6` (the tool joint) |
 | `diff_drive_controller` | wheels (via `twist_mux`) |
 
-Each arm's wrist camera is bridged as `/<side>_arm_wrist_camera/image_raw`.
-Integration notes (mount-point measurement, the lift-effort and arm-yaw
-fixes, the stale-`robot_state_publisher` gotcha):
+The wrist camera is bridged as `/arm_wrist_camera/image_raw`. Integration
+notes (mount-point measurement, the arm-yaw fix, the
+stale-`robot_state_publisher` gotcha):
 [`docs/worklogs/dual_arm.md`](docs/worklogs/dual_arm.md).
 
 ### Teleop

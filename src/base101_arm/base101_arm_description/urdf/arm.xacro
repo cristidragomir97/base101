@@ -1,14 +1,27 @@
 <?xml version="1.0" ?>
 <robot name="base101_arm" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-<!-- One mod101 arm on the arm mount plate. Included from base101_arm.xacro
-     when arm:=true. mod101 stays a standalone repo: build it first and source
-     its install as an underlay, then build this workspace.
+<!-- One mod101 arm on the chassis deck. Included from base101_arm.xacro when
+     arm:=true. mod101 stays a standalone repo: build it first and source its
+     install as an underlay, then build this workspace.
 
-     Joint names become arm_1..arm_6; controllers live in
+     Joint names get the arm_ prefix (arm_joint_base ... arm_joint_wrist_roll,
+     plus the tool's arm_6); controllers live in
      base101_arm_control/config/controllers.sim.yaml. -->
 
+<!-- How the arm is built is the web configurator's call, not ours. Including
+     mod101_config.xacro gives us the same tool + rail lengths + servo mounts
+     the configurator last wrote, so re-running it and rebuilding is enough to
+     change the arm here. Passing these explicitly matters: leave any of them
+     off and the macro silently falls back to its own signature defaults, which
+     are NOT the configured values. -->
+<xacro:include filename="$(find mod101_description)/urdf/mod101_config.xacro"/>
 <xacro:include filename="$(find mod101_description)/urdf/mod101_macro.xacro"/>
+
+<!-- Tool follows the configurator too, but stays overridable per launch
+     (arm_tool:=parallel) so you can run a different end-effector on the robot
+     than on the bench. -->
+<xacro:arg name="arm_tool" default="$(arg tool)"/>
 
 <!-- The only mod101 material base101's palette doesn't already define
      (silver / accent_green / motor_black match byte-for-byte). -->
@@ -20,13 +33,19 @@
      mujoco scenes don't model it yet and simulator=none is rviz-only. -->
 <xacro:property name="arm_use_sim" value="${'$(arg simulator)' == 'gazebo'}"/>
 
-<!-- Mount point on the arm mount plate top face: the plate is ~160x220 mm and
-     its top deck sits ~3 mm above the link origin; the arm base (80x100 mm)
-     drops onto the plate centre (the plate's own inertial centroid in XY).
-     Refine against the physical bolt pattern. Unrotated, the arm's ready
-     stance reaches toward the robot's front (+X). -->
-<xacro:mod101_arm prefix="arm_" parent="arm_mount_plate"
-                  xyz="-0.08 0.11 0.01" rpy="0 0 0"
-                  tool="$(arg arm_tool)" use_sim="${arm_use_sim}"/>
+<!-- Mount point on the chassis deck (top_plate_1) top face. mod101's
+     base_link sits at the centre of its own base plate on the mounting face,
+     so this is just "deck centre, deck top" in deck-local coords: the deck
+     origin is its back-right corner (base_link -0.08, -0.11), 3 mm under the
+     top face.
+
+     Unrotated, the arm's ready stance reaches toward the robot's front (+X). -->
+<xacro:mod101_arm prefix="arm_" parent="top_plate_1"
+                  xyz="0.08 0.11 0.003" rpy="0 0 0"
+                  tool="$(arg arm_tool)" use_sim="${arm_use_sim}"
+                  shoulder_ext_length="$(arg shoulder_ext_length)"
+                  elbow_ext_length="$(arg elbow_ext_length)"
+                  shoulder_mount="$(arg shoulder_mount)"
+                  elbow_mount="$(arg elbow_mount)"/>
 
 </robot>
