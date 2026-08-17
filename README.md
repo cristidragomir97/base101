@@ -1,11 +1,25 @@
 # base101
 
-An open-source 4WD mobile robot platform designed to carry the mod101 arm and other payloads. Built from 60×20 aluminum extrusion, PLA-CF printed parts, and Waveshare DDSM hub motors.
-
 <p align="center">
       <img src="img/moneyshot.png" alt="base101" width="100%" />
 </p>
 
+**An open-source mobile base you can actually build things on.**
+
+Every robot project that has to *move* starts the same way: you want to work on
+the interesting part — the arm, the perception, the behaviour — and instead you
+spend six weeks building a cart. Then you want to add a lidar, and there's
+nowhere to put it. Then you add a compute board, and you're drilling into your
+own chassis. Most open mobile bases are somebody's finished robot, published as
+if it were a platform, and the moment your payload differs from theirs you're
+forking it.
+
+base101 is the other thing: a chassis whose entire job is to carry whatever you
+bolt to it. A machined deck with a grid of tapped holes, four direct-drive hub
+motors, a lidar and a depth camera already wired into ROS 2, and a one-line
+mounting point for the [mod101](https://github.com/robocore-dev/mod101) arm. It
+drives, maps and navigates on day one, so the part you actually care about can
+start on day two.
 
 - 🧱 **Real frame, not a printed box** — 60×20 aluminum extrusion, PLA-CF printed parts only where they earn their place.
 - 🕳️ **A deck you can bolt anything to** — 280×400 mm aluminum plate, 3 mm thick, CNC-machined ORP compatible grid. 
@@ -17,35 +31,195 @@ An open-source 4WD mobile robot platform designed to carry the mod101 arm and ot
 - 🧠 **One board runs the base** — built around the [link101](https://github.com/robocore-dev/link101-hw)
 - 🤖 **Carries the [mod101](https://github.com/robocore-dev/mod101) arm** — one xacro line, plus MoveIt config for the *composed* robot: the arm knows the chassis it stands on.
 
-
 **Here to build the robot?** The hardware is described below. **Here to run the
-code?** Skip to [Software](#software) — or straight to [Build](#build).
+code?** Start with [Getting started](#getting-started).
 
 ---
 
-## Software
+## Getting started
 
+You'll need ROS 2 Jazzy on Ubuntu 24.04. Everything else (Gazebo Harmonic,
+`ros2_control`, `gz_ros2_control`) comes from apt.
 
+**Just the chassis** — no arm, nothing else to build first:
 
-| If you want to… | Go to |
+```bash
+cd ~/robots/base101
+colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
+source install/setup.bash
+
+ros2 launch base101_simple_gazebo gazebo.launch.py
+```
+
+That's a robot in Gazebo, driving, scanning, publishing `/odom` — open
+`http://localhost:8888/` and drive it around from the browser.
+
+**With the arm**, mod101 has to be built and sourced first (it's the underlay;
+base101 sits on top of it):
+
+```bash
+cd ~/robots/mod101 && colcon build --symlink-install && source install/setup.bash
+cd ~/robots/base101
+colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
+source install/setup.bash
+
+ros2 launch base101_arm_gazebo gazebo.launch.py arm:=true
+```
+
+**This is the only place the build is documented** — everything below assumes
+you've run it. Two footnotes that will save you an afternoon:
+
+- **The `Python3_EXECUTABLE` pin isn't arm-specific.** It applies to every build
+  here, and it guards against a stray non-system python on `PATH` breaking
+  ament's `package.xml` parsing and `rosidl`'s `em` import. Tired of typing it?
+  Set it once in `~/.colcon/defaults.yaml` — see [`HARDWARE.md`](HARDWARE.md).
+- **`rosdep` has never heard of `mod101_description`.** It's an `exec_depend` of
+  `base101_arm_description` but not a rosdep key, so pass
+  `--skip-keys mod101_description` if you run `rosdep install`.
+
+### Things to try
+
+```bash
+ros2 launch base101_simple_gazebo gazebo.launch.py                    # bare chassis, sticky_floor world
+ros2 launch base101_arm_gazebo    gazebo.launch.py arm:=true          # chassis + 1 mod101 arm
+ros2 launch base101_simple_gazebo gazebo.launch.py world:=empty.sdf   # pick a world
+ros2 launch base101_simple_gazebo gazebo.launch.py camera:=oak_d      # Luxonis OAK-D instead of the D435
+ros2 launch base101_simple_description display.launch.py              # rviz only, no sim
+```
+
+`camera:=realsense|oak_d` picks which depth module hangs off the front bracket
+(default `realsense`). It only swaps the mesh and the simulated FOV — topics
+stay `/base_camera/*` and frames stay `camera_link` / `camera_optical_frame`
+either way, so nothing downstream notices. Both `gazebo.launch.py` and
+`display.launch.py` take it.
+
+Manual test procedures for every variant, tool and launch combination are in
+[`docs/testing.md`](docs/testing.md).
+
+### On the real robot
+
+Motors, IMU and lidar all hang off the Axon 2 board and talk to ROS 2 over
+zenoh, so bringup is two lines:
+
+```bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+ros2 launch base101_simple_control control_stack.launch.py
+```
+
+Firmware, the zenoh router, serial devices and udev rules:
+[`HARDWARE.md`](HARDWARE.md).
+
+## Adding the mod101 arm
+
+**The whole point of the deck is that something goes on it.** The obvious
+something is [mod101](https://github.com/robocore-dev/mod101), a 5+1 DOF arm
+that's designed to be embedded — it's a prefix-parameterised xacro macro, so
+base101 mounts it with one call and gets joints `arm_1…6`.
+
+```bash
+ros2 launch base101_arm_gazebo gazebo.launch.py arm:=true                   # jaws gripper
+ros2 launch base101_arm_gazebo gazebo.launch.py arm:=true arm_tool:=parallel
+ros2 launch base101_arm_description display.launch.py arm:=true             # rviz only
+```
+
+You don't configure the arm here. Rail lengths, servo mounts and the active
+tool all come from `mod101_config.xacro` — whatever mod101's web configurator
+last saved. Resize the arm over there, rebuild here, done.
+
+### How the two repos meet
+
+mod101 is an **underlay**: built and sourced first, it puts its packages on
+`AMENT_PREFIX_PATH`, and base101 is the overlay on top. **Nothing in mod101
+knows base101 exists.** base101 reaches back across the boundary in exactly
+three places:
+
+| Crossing | Where, in base101 | What it pulls from mod101 |
+|---|---|---|
+| **Geometry** | `base101_arm_description/urdf/arm.xacro` | `<xacro:mod101_arm prefix="arm_" parent="top_plate_1">` from `mod101_macro.xacro` |
+| **Semantics** | `base101_arm_moveit_config/srdf/base101_arm.srdf.xacro` | `<xacro:mod101_arm_srdf prefix="arm_" tool=…>` from `mod101_moveit_config` |
+| **Build args** | both files above | `mod101_config.xacro` — rail lengths, servo mounts, active tool |
+
+Two macro calls and one config file. No forked packages, no vendored meshes, no
+duplicated URDF — which is what let the (now parked) dual-arm tower mount the
+*same* macro twice, `left_arm_` / `right_arm_`, with zero changes upstream.
+
+Two things worth knowing before they confuse you:
+
+- **Only the `arm` variant crosses over.** The `simple` variant never touches
+  the underlay, so a bare-chassis build needs no mod101 at all.
+- **The prefix renames everything the macro emits.** `joint_base` becomes
+  `arm_joint_base`, and the planning group `arm` becomes **`arm_arm`**. Every
+  base101 config keys on the prefixed names. It reads badly and it is correct.
+
+### Motion planning
+
+```bash
+ros2 launch base101_arm_moveit_config demo.launch.py     # gazebo + move_group
+```
+
+This config exists because mod101's own only knows arm-vs-arm collisions — but
+the arm can reach every part of the chassis it's bolted to, so the composed
+robot needs its own self-collision matrix. The planning scene knows the robot,
+not the world; [`docs/obstacle-awareness.md`](docs/obstacle-awareness.md)
+covers where perceived obstacles should live relative to a picking layer.
+
+One gotcha: the sim has to run with `arm_control:=moveit` (the demo launch does
+this for you) so it spawns `FollowJointTrajectory` controllers instead of the
+`Float64MultiArray` ones the web sliders use. Details in
+[`base101_arm_moveit_config/README.md`](src/base101_arm/base101_arm_moveit_config/README.md).
+
+**Controllers** — arm and gripper are
+`position_controllers/JointGroupPositionController`, commanded with
+`std_msgs/Float64MultiArray` on `/<name>/commands`:
+
+| Controller | Joints |
 |---|---|
-| understand the package layout | [Packages](#packages) |
-| compile the workspace | [Build](#build) |
-| launch a sim | [Run it](#run-it) |
-| use the arm | [The mod101 arm](#the-mod101-arm) |
-| drive it from a browser | [Teleop](#teleop) |
-| run it on real hardware | [`HARDWARE.md`](HARDWARE.md) |
-| find anything else | [Documentation](#documentation) |
+| `arm_controller` | `arm_joint_base, arm_joint_shoulder, arm_joint_elbow, arm_joint_wrist_tilt, arm_joint_wrist_roll` |
+| `gripper_controller` | `arm_6` (the tool joint) |
+| `diff_drive_controller` | wheels (via `twist_mux`) |
 
-### Packages
+The wrist camera is bridged as `/arm_wrist_camera/image_raw`.
 
-The workspace is a **shared core** plus one self-contained stack per
-**variant** (`description` / `gazebo` / `control`). Variants are grouped into
-folders under `src/` (`base101/`, `base101_arm/`); colcon discovers packages
-recursively, so the folders are purely organisational. Packages parked out of
-the build live in [`attic/`](attic/README.md).
+## Driving it from a browser
 
-#### **Core / shared** — `src/base101/`
+No joystick, no terminal, no extra install — two ways:
+
+- **rosboard's "Joint sliders" card** (the good one): open
+  `http://localhost:8888/`, pick **Joint sliders** in the System nav. One panel,
+  a position slider for every controlled joint, initialised from the live robot
+  pose with readouts and a re-sync button. Groups whose hardware isn't loaded
+  hide themselves, and the card survives a reload. Base driving lives on the
+  separate **Teleop** card. (Position commands deliberately *aren't* zeroed by
+  the publish watchdog the way Twist is, so the arm holds its pose when the
+  browser goes quiet.)
+- **`base101_teleop`** — a zero-dependency fallback if rosboard is unhappy:
+  `ros2 run base101_teleop server` → `http://localhost:8700/`. Same sliders plus
+  a hold-to-drive base pad. See
+  [`src/base101_teleop/README.md`](src/base101_teleop/README.md).
+
+## Simulation
+
+The robot runs in **Gazebo Sim** through `gz_ros2_control`, and the sim is
+meant to be the default place you work — it publishes the same `/cmd_vel_*`,
+`/odom`, `/scan`, `/joint_states` and `/base_camera/image_raw` topics the real
+robot does, so code written against sim moves over unchanged.
+
+Each variant takes a `simulator` xacro arg (`gazebo` | `none`) that decides
+whether the URDF carries the sim `ros2_control` and extension tags; `none` is
+the bare URDF for rviz and real hardware. Worlds and the gz↔ros bridge config
+live in the shared `base101_gazebo` package.
+
+## How the workspace is put together
+
+*Skip this unless you're adding a package — everything above works without it.*
+
+It's a **shared core** plus one self-contained stack per **variant**
+(`description` / `gazebo` / `control`). Variants are grouped into folders under
+`src/` (`base101/`, `base101_arm/`); colcon discovers packages recursively, so
+the folders are purely organisational. Packages parked out of the build live in
+[`attic/`](attic/README.md).
+
+**Core / shared** — `src/base101/`
 
 | Package | Type | Purpose |
 |---|---|---|
@@ -54,16 +228,14 @@ the build live in [`attic/`](attic/README.md).
 | `base101_control_plugin` | ament_cmake | `ros2_control` SystemInterface bridging wheel/arm/camera command+state interfaces to the Axon firmware's `/motor_manager/*` topics (zenoh). Shared by all variants. |
 | `base101_gazebo` | ament_cmake | Sim-common: Gazebo worlds, ros↔gz bridge, RViz preset. |
 
-#### **Variant stacks** 
-Each is a self-contained `description` + `gazebo` + `control` trio that includes the shared chassis and adds only its own hardware. You launch a variant package — never `base101_description`.
+**Variant stacks** — each is a self-contained `description` + `gazebo` +
+`control` trio that includes the shared chassis and adds only its own hardware.
+You launch a variant package, never `base101_description`.
 
 | Variant | Folder | Adds to the chassis | Packages |
 |---|---|---|---|
 | **simple** | `src/base101/` | nothing (the bare base robot) | `base101_simple_{description,gazebo,control}` |
 | **arm** | `src/base101_arm/` | 1 mod101 arm on the chassis deck | `base101_arm_{description,gazebo,control,moveit_config}` |
-
-
-
 
 **Other tooling** — `src/`
 
@@ -73,8 +245,6 @@ Each is a self-contained `description` + `gazebo` + `control` trio that includes
 | `base101_mcp` | ament_python | Generic ROS2 ↔ MCP (Model Context Protocol) bridge. Lets Claude (or any MCP client) discover topics/services and read/publish messages over natural language. Requires `pip install "fastmcp>=2,<3"`. |
 | `base101_teleop` | ament_python | Standalone single-page web teleop (base + every joint) on `:8700`. Fallback for the rosboard Joint sliders card. |
 | `rosboard` | ament_python | Vendored web dashboard. Carries two publisher cards: **Teleop** (Twist) and **Joint sliders** (Float64MultiArray position commands for tower + arms). |
-
-### Package structure
 
 ```mermaid
 graph TD
@@ -121,179 +291,7 @@ Solid arrows are build/`xacro:include` dependencies; dashed arrows are the
 runtime `gz_ros2_control` controller-file lookup (resolved at Gazebo spawn,
 carried as a manifest dep by the `*_gazebo` package to avoid a cycle).
 
-Manual test procedures for every variant, tool and launch combination are in
-[`docs/testing.md`](docs/testing.md).
-
-### Build
-
-**This is the only place build is documented.** Everything else assumes you have
-run it.
-
-Bare chassis — no arm, no underlay:
-
-```bash
-cd ~/robots/base101
-colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
-source install/setup.bash
-```
-
-With the arm (`arm:=true`, and anything under
-[The mod101 arm](#the-mod101-arm)), mod101 must be built and sourced first as an
-underlay:
-
-```bash
-cd ~/robots/mod101 && colcon build --symlink-install && source install/setup.bash
-cd ~/robots/base101
-colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
-source install/setup.bash
-```
-
-Two footnotes that will save you an afternoon:
-
-- **The `Python3_EXECUTABLE` pin is not arm-specific** — it applies to every
-  build in this workspace. It guards against a stray non-system python on `PATH`
-  breaking ament's `package.xml` parsing and `rosidl`'s `em` import. To stop
-  passing it by hand, set it once in `~/.colcon/defaults.yaml` — see
-  [`HARDWARE.md`](HARDWARE.md).
-- **`rosdep` doesn't know `mod101_description`.** It is an `exec_depend` of
-  `base101_arm_description` but not a rosdep key, so pass
-  `--skip-keys mod101_description` if you run `rosdep install`.
-
-### Run it
-
-```bash
-ros2 launch base101_simple_gazebo gazebo.launch.py                    # bare chassis, sticky_floor world
-ros2 launch base101_arm_gazebo    gazebo.launch.py arm:=true          # chassis + 1 mod101 arm
-ros2 launch base101_simple_gazebo gazebo.launch.py world:=empty.sdf   # pick a world
-ros2 launch base101_simple_gazebo gazebo.launch.py camera:=oak_d      # Luxonis OAK-D instead of the D435
-ros2 launch base101_simple_description display.launch.py              # rviz only, no sim
-```
-
-Web teleop is at `http://localhost:8888/` (rosboard) once the sim is up.
-
-`camera:=realsense|oak_d` picks which depth module hangs off the front bracket
-(default `realsense`). It swaps the mesh and the simulated FOV only — the
-topics stay `/base_camera/*` and the frames stay `camera_link` /
-`camera_optical_frame` either way. Both `gazebo.launch.py` and
-`display.launch.py` take it.
-
-For the **real robot** (Axon 2 firmware over zenoh), see [`HARDWARE.md`](HARDWARE.md):
-
-```bash
-export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 launch base101_simple_control control_stack.launch.py
-```
-
-## The mod101 arm
-
-The [mod101](https://github.com/robocore-dev/mod101) repo stays standalone —
-its arm is a prefix-parameterised xacro macro (`mod101_arm`, see
-`mod101_description/urdf/mod101_macro.xacro`). The **arm** variant
-(`base101_arm_description`) instantiates it once, deck-mounted, producing
-joints `arm_1…6`. (The parked tower instantiated it twice on the crossbeam
-brackets, as `left_arm_1…6` / `right_arm_1…6`.)
-
-#### The overlay: exactly three crossing points
-
-mod101 is an **underlay** — built and sourced first, it puts its packages on
-`AMENT_PREFIX_PATH`. base101 is the overlay. **Nothing in mod101 knows base101
-exists**, and base101 reaches back across the boundary in only three places:
-
-| Crossing | Where, in base101 | What it pulls from mod101 |
-|---|---|---|
-| **Geometry** | `base101_arm_description/urdf/arm.xacro` | `<xacro:mod101_arm prefix="arm_" parent="top_plate_1">` from `mod101_macro.xacro` |
-| **Semantics** | `base101_arm_moveit_config/srdf/base101_arm.srdf.xacro` | `<xacro:mod101_arm_srdf prefix="arm_" tool=…>` from `mod101_moveit_config` |
-| **Build args** | both files above | `mod101_config.xacro` — rail lengths, servo mounts, active tool |
-
-Two macro calls and one config file. No forked packages, no vendored meshes, no
-duplicated URDF. That is what lets the parked tower mount the *same* macro twice
-(`left_arm_` / `right_arm_`) with zero changes upstream.
-
-Two consequences worth internalising:
-
-- **Only the `arm` variant crosses.** The `simple` variant never touches the
-  underlay, so a bare-chassis build needs no mod101 at all.
-- **The prefix renames everything the macro emits.** `joint_base` becomes
-  `arm_joint_base`; planning group `arm` becomes **`arm_arm`**. Every base101
-  config keys on the prefixed names. It reads badly and it is correct.
-
-**Build:** the arm needs the mod101 underlay built and sourced first — see
-[Build](#build). Everything below assumes that.
-
-**Launch:**
-
-```bash
-ros2 launch base101_arm_gazebo gazebo.launch.py arm:=true                   # jaws gripper
-ros2 launch base101_arm_gazebo gazebo.launch.py arm:=true arm_tool:=parallel
-ros2 launch base101_arm_description display.launch.py arm:=true            # rviz only
-```
-
-`arm_tool` defaults to whatever the mod101 configurator last saved, as do the
-rail lengths and servo mounts — `mod101_config.xacro` is the single source of
-truth and base101 reads it, so reconfiguring the arm and rebuilding is enough.
-
-**Motion planning** (`base101_arm_moveit_config`):
-
-```bash
-ros2 launch base101_arm_moveit_config demo.launch.py     # gazebo + move_group
-```
-
-This exists because mod101's own MoveIt config only knows arm-vs-arm
-collisions; the arm can reach every part of the chassis it sits on, so the
-composed robot needs its own self-collision matrix. The planning scene knows
-the robot but not the world — see
-[`docs/obstacle-awareness.md`](docs/obstacle-awareness.md) for where perceived
-obstacles should live relative to a picking layer. Note the sim must run with
-`arm_control:=moveit` (the demo launch does this) to spawn the
-`FollowJointTrajectory` controllers instead of the `Float64MultiArray` ones the
-web sliders use — see
-[`base101_arm_moveit_config/README.md`](src/base101_arm/base101_arm_moveit_config/README.md).
-
-**Controllers** (arm/gripper are `position_controllers/JointGroupPositionController`,
-commands are `std_msgs/Float64MultiArray` on `/<name>/commands`):
-
-| Controller | Joints |
-|---|---|
-| `arm_controller` | `arm_joint_base, arm_joint_shoulder, arm_joint_elbow, arm_joint_wrist_tilt, arm_joint_wrist_roll` |
-| `gripper_controller` | `arm_6` (the tool joint) |
-| `diff_drive_controller` | wheels (via `twist_mux`) |
-
-The wrist camera is bridged as `/arm_wrist_camera/image_raw`. Integration
-notes (mount-point measurement, the arm-yaw fix, the
-stale-`robot_state_publisher` gotcha):
-[`docs/worklogs/dual_arm.md`](docs/worklogs/dual_arm.md).
-
-## Teleop
-
-Two ways to drive everything from a browser:
-
-- **rosboard "Joint sliders" card** (recommended): open rosboard
-  (`http://localhost:8888/`), pick **Joint sliders** in the System nav. One
-  panel with a position slider for every controlled joint — lift, pan/tilt
-  head, both arms, both grippers — initialised from the live robot pose,
-  with live position readouts and a re-sync button. Groups whose hardware
-  isn't loaded hide automatically; the card persists across reloads. Base
-  driving stays on the separate **Teleop** card. (Backed by rosboard's
-  `MSG_PUB` channel; `std_msgs/Float64MultiArray` is allowlisted and —
-  unlike Twist — deliberately *not* zeroed by the publish watchdog, so
-  position commands hold when the browser goes quiet.)
-- **`base101_teleop`** — a zero-dependency standalone fallback:
-  `ros2 run base101_teleop server` → `http://localhost:8700/`. Same sliders
-  plus a hold-to-drive base pad. See
-  [`src/base101_teleop/README.md`](src/base101_teleop/README.md).
-
-## Simulation
-
-The robot runs in **Gazebo Sim** via `gz_ros2_control`. A `simulator` xacro
-arg on each variant (`gazebo` | `none`) selects whether the URDF carries the
-sim ros2_control + extension tags; `none` is the bare URDF for rviz / real
-hardware. Launch a variant's `*_gazebo` package (see Quickstart). The sim
-publishes the standard `/cmd_vel_*`, `/odom`, `/scan`, `/joint_states`, and
-`/base_camera/image_raw` topics. Worlds and the gz↔ros bridge config live in
-the shared `base101_gazebo` package.
-
-
-## Documentation
+## Deeper docs
 
 **Use it**
 
