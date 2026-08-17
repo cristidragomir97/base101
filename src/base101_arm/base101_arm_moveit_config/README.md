@@ -38,7 +38,7 @@ scripts/gen_collision_matrix.py
 ## Running it
 
 ```bash
-source ~/mod101/install/setup.bash      # underlay first
+source ~/robots/mod101/install/setup.bash      # underlay first
 source install/setup.bash
 ros2 launch base101_arm_moveit_config demo.launch.py
 ```
@@ -72,22 +72,36 @@ doesn't change by being bolted down.
 
 It is generated rather than written because it is a property of the *build*:
 the configurator can change the rail lengths, which changes the arm's reach,
-which changes which pairs can never touch. The mod101 configurator's Save
-regenerates both repos' matrices automatically (see `configurator/server.py`,
-`BASE101_WS`); to do it by hand:
+which changes which pairs can never touch.
+
+**mod101's configurator does not regenerate these for you.** It regenerates its
+own matrices and then tells you to run this — the arm deliberately doesn't know
+where its consumers live. After any configurator change, run:
 
 ```bash
-python3 scripts/gen_collision_matrix.py            # all tools, ~26 s
-python3 scripts/gen_collision_matrix.py --tool jaws
+./scripts/sync_arm_change.sh                    # all tools
+./scripts/sync_arm_change.sh --tool jaws
+./scripts/sync_arm_change.sh --trials 4000000
 ```
+
+That sources the mod101 underlay (`MOD101_WS`, default `~/robots/mod101`) then
+this workspace, so the generator reads the build args the configurator last
+saved. Arguments pass straight through to `gen_collision_matrix.py`, which you
+can still call directly if the environment is already set up.
 
 **Read the trials note in that script before lowering `--trials`.** "Never
 colliding" is decided by random sampling, and disabling a pair that *can*
 collide is the dangerous direction. On this robot the default of 10,000 that
 mod101 uses was measurably wrong — it disabled `arm_jaws_moving` against both
 back standoffs and the back-left wheel. The default here is 1,000,000, which is
-past the knee but still sheds about one pair per doubling at 2M. mod101's own
-matrix is unaffected: with 21 links and 210 pairs it is converged at 10k.
+past the knee but still sheds about one pair per doubling at 2M.
+
+**mod101's own matrix is *not* converged at 10k** — an earlier version of this
+note claimed it was. Diffing a 10k run against a 1M run of the same build (276
+pairs, not 210) shows 10k wrongly disabling real pairs on every tool, including
+`base_cover_1`↔`wrist_camera_v1_1` on all four — which would let the planner
+drive the wrist camera through the base cover. Run mod101's generator with
+`--trials 1000000` until its default is raised.
 
 ## Not done
 

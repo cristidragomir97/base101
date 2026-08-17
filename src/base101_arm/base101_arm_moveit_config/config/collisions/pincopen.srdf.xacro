@@ -4,10 +4,12 @@
   — do not edit by hand.
 
   tool=pincopen  shoulder_ext_length=0.1400 elbow_ext_length=0.1400 shoulder_mount=small elbow_mount=small
-  868 chassis-involving pairs disabled (54 adjacent/always,
-  814 never-colliding over 1000000 random samples), out of 2016
-  pairs in the composed robot. "Never" is statistical — see the generator's
-  docstring for the trials-vs-pairs convergence on this robot.
+  872 chassis-involving pairs disabled (54 adjacent/always,
+  814 never-colliding over 1000000 random samples, 4 rigid/
+  collapsed-adjacent from URDF topology), out of 2016 pairs in the
+  composed robot. "Never" is statistical — see the generator's docstring for
+  the trials-vs-pairs convergence on this robot. The rigid/collapsed pairs are
+  derived from the joint graph instead, and are build-invariant.
 
   Arm-vs-arm pairs are NOT here: mod101_collisions_pincopen supplies those, and
   the arm's internal geometry does not change by being mounted. Regenerate
@@ -15,6 +17,16 @@
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 <xacro:macro name="base101_arm_collisions_pincopen" params="">
+
+  <!-- Derived from URDF topology by rigid_adjacency(), not
+       sampled: links held rigid by fixed joints, and the pairs
+       one movable joint apart once those are collapsed. Build-
+       invariant — see the function docstring. -->
+  <disable_collisions link1="wheel_back_left_1" link2="wheel_hub_back_left_1" reason="Adjacent"/>
+  <disable_collisions link1="wheel_back_right_1" link2="wheel_hub_back_right_1" reason="Adjacent"/>
+  <disable_collisions link1="wheel_front_left_1" link2="wheel_hub_front_left_1" reason="Adjacent"/>
+  <disable_collisions link1="wheel_front_right_1" link2="wheel_hub_front_right_1" reason="Adjacent"/>
+
   <disable_collisions link1="arm_arm_extrusion_1" link2="base_link" reason="Never"/>
   <disable_collisions link1="arm_arm_extrusion_1" link2="box_back_1" reason="Never"/>
   <disable_collisions link1="arm_arm_extrusion_1" link2="box_front_1" reason="Never"/>

@@ -3,9 +3,10 @@
 Gazebo Sim integration for base101. Worlds, the launch that spawns the
 robot + ros2_control, and the ROS↔Gazebo bridges for sensors and clock.
 
-Gazebo is the default and most production-tested of the three simulators
-this repo supports. See [`SIMULATORS.md`](../../SIMULATORS.md) for how the
-gazebo / mujoco / isaac backends compare and how they share scaffolding.
+Gazebo is the only simulator backend in this workspace. The `simulator:=`
+argument on the description xacros exists so alternatives (mujoco, isaac) can be
+slotted in, but none are implemented here — `simulator:=none` is the other
+supported value, used for real hardware and by the collision-matrix generator.
 
 ## Layout
 

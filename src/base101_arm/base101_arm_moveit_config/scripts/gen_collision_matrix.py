@@ -47,6 +47,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,9 +67,11 @@ HEADER = """<?xml version="1.0"?>
 
   tool={tool}  {build}
   {npairs} chassis-involving pairs disabled ({ndefault} adjacent/always,
-  {nnever} never-colliding over {trials} random samples), out of {ntotal}
-  pairs in the composed robot. "Never" is statistical — see the generator's
-  docstring for the trials-vs-pairs convergence on this robot.
+  {nnever} never-colliding over {trials} random samples, {nrigid} rigid/
+  collapsed-adjacent from URDF topology), out of {ntotal} pairs in the
+  composed robot. "Never" is statistical — see the generator's docstring for
+  the trials-vs-pairs convergence on this robot. The rigid/collapsed pairs are
+  derived from the joint graph instead, and are build-invariant.
 
   Arm-vs-arm pairs are NOT here: mod101_collisions_{tool} supplies those, and
   the arm's internal geometry does not change by being mounted. Regenerate
@@ -122,6 +125,80 @@ def bootstrap_srdf(tool):
 """
 
 
+def rigid_adjacency(urdf_text):
+    """Pairs that collisions_updater structurally cannot find, from the joint graph.
+
+    THE BUG THIS FIXES. collisions_updater marks a pair "Adjacent" only when the
+    two links are *directly* connected by a joint. A pair one link removed across
+    a fixed joint is neither adjacent (not directly connected) nor never-colliding
+    (it does collide when sampled), so it falls through both nets and stays
+    enabled forever. On mod101 that pair is elbow_link_1 <-> elbow_adapter_1:
+
+        elbow_link_1 --(fixed_servo_elbow_1)--> servo_elbow_1
+                     --(joint_elbow)--> elbow_adapter_1
+
+    i.e. the two halves of the elbow hinge, whose exported meshes interpenetrate
+    the way any real hinge's do. With that pair enabled the elbow's range breaks
+    into disconnected valid bands (measured: valid 0.0-0.2, blocked to 1.3, valid
+    1.37-1.77, blocked to 2.8, valid 2.95-3.14), `home` and `ready` land in
+    different bands, and OMPL reports "Unable to solve the planning problem" for
+    goals that are individually valid.
+
+    THE RULE. A fixed joint never moves, so the links it connects are one rigid
+    body and MoveIt's notion of "adjacent" should see through it. For each movable
+    joint, take its parent and child, extend each by one fixed-joint hop, and
+    disable that cross product.
+
+    DELIBERATELY NARROW. The tempting version — collapse every fixed chain into a
+    maximal rigid body and disable the full cross product across each movable
+    joint — is wrong. On base101 the chassis is one large rigid body, so that rule
+    disables e.g. lidar_1 <-> shoulder_rotation_link_1 across joint_base: two links
+    that really can hit each other when the shoulder sweeps. It produced 985 pairs
+    on the composed robot, most of them unjustified. One fixed hop is exactly the
+    gap collisions_updater leaves and no more.
+
+    Same-rigid-body pairs are deliberately not emitted either: their relative pose
+    is constant, so sampling always classifies them correctly already.
+
+    This is topology only. It does not read geometry, so it is independent of the
+    rail lengths and the small|big mount swap, and returns the same set for every
+    build the configurator can produce — unlike the sampled "Never" pairs.
+
+    Mirrored from mod101/tools/gen_collision_matrix.py; keep the two in step.
+
+    Returns {frozenset({link1, link2}): 'Adjacent'}.
+    """
+    root = ET.fromstring(urdf_text)
+
+    joints = []
+    for j in root.findall('joint'):
+        p, c = j.find('parent'), j.find('child')
+        # <joint> also appears inside <ros2_control> without parent/child.
+        if p is None or c is None:
+            continue
+        joints.append((j.get('type'), p.get('link'), c.get('link')))
+
+    # One fixed-joint hop, both directions.
+    fixed_nbr = {}
+    for jtype, pl, cl in joints:
+        if jtype == 'fixed':
+            fixed_nbr.setdefault(pl, set()).add(cl)
+            fixed_nbr.setdefault(cl, set()).add(pl)
+
+    out = {}
+    for jtype, pl, cl in joints:
+        if jtype == 'fixed':
+            continue
+        pset = {pl} | fixed_nbr.get(pl, set())
+        cset = {cl} | fixed_nbr.get(cl, set())
+        for a in pset:
+            for b in cset:
+                if a != b:
+                    out[frozenset((a, b))] = 'Adjacent'
+
+    return out
+
+
 def generate(tool, trials, args):
     print(f'==> {tool}', flush=True)
     mappings = [f'{k}:={v}' for k, v in args.items()] + [
@@ -144,9 +221,11 @@ def generate(tool, trials, args):
         pairs = re.findall(r'<disable_collisions[^/]*/>', srdf_out.read_text())
 
     body, counts, kept = [], {'default': 0, 'never': 0, 'always': 0}, 0
+    sampled = set()
     for p in pairs:
         l1 = re.search(r'link1="([^"]*)"', p).group(1)
         l2 = re.search(r'link2="([^"]*)"', p).group(1)
+        sampled.add(frozenset((l1, l2)))
         # mod101 already owns the arm-internal pairs.
         if l1.startswith(ARM_PREFIX) and l2.startswith(ARM_PREFIX):
             continue
@@ -157,12 +236,29 @@ def generate(tool, trials, args):
                'always' if r == 'always' else 'default'] += 1
         body.append('  ' + p)
 
+    # Derived pairs collisions_updater structurally cannot find. Arm-internal
+    # ones belong to mod101's matrix, same as for the sampled pairs, so only
+    # chassis-involving ones are kept here.
+    extra = sorted(
+        (sorted(k), v) for k, v in rigid_adjacency(urdf_text).items()
+        if k not in sampled
+        and not all(n.startswith(ARM_PREFIX) for n in k))
+    if extra:
+        head = ['', '  <!-- Derived from URDF topology by rigid_adjacency(), not',
+                '       sampled: links held rigid by fixed joints, and the pairs',
+                '       one movable joint apart once those are collapsed. Build-',
+                '       invariant — see the function docstring. -->']
+        body = ['\n'.join(head)] + [
+            f'  <disable_collisions link1="{a}" link2="{b}" reason="{why}"/>'
+            for (a, b), why in extra] + [''] + body
+        kept += len(extra)
+
     header = HEADER.format(
         tool=tool,
         build=' '.join(f'{k}={v}' for k, v in args.items()),
         npairs=kept, ntotal=nlinks * (nlinks - 1) // 2,
         ndefault=counts['default'] + counts['always'],
-        nnever=counts['never'], trials=trials)
+        nnever=counts['never'], nrigid=len(extra), trials=trials)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUT_DIR / f'{tool}.srdf.xacro').write_text(

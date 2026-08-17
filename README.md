@@ -6,6 +6,9 @@
 
 An open-source 4WD mobile robot platform designed to carry the mod101 arm and other payloads. Built from 60×20 aluminum extrusion, PLA-CF printed parts, and Waveshare DDSM hub motors.
 
+**Here to build the robot?** The hardware is described below. **Here to run the
+code?** Skip to [Software](#software) — or straight to [Build](#build).
+
 ## At a Glance
 
 | | base101 |
@@ -56,9 +59,21 @@ Mounted on the top plate. 360° DTOF scanning, 12m range, 5000 samples/sec. Hand
 Front-mounted between the extrusion rails. 87° wide FOV for spatial awareness and 3D perception. Provides point cloud data for obstacle avoidance and workspace mapping. The wide field of view captures the arm's entire workspace in front of the robot.
 
 
+---
+
 ## Software
 
-ROS 2 Jazzy workspace. The `diff_drive_controller` handles skid-steer kinematics for the DDSM210 drivetrain.
+
+
+| If you want to… | Go to |
+|---|---|
+| understand the package layout | [Packages](#packages) |
+| compile the workspace | [Build](#build) |
+| launch a sim | [Run it](#run-it) |
+| use the arm | [The mod101 arm](#the-mod101-arm) |
+| drive it from a browser | [Teleop](#teleop) |
+| run it on real hardware | [`HARDWARE.md`](HARDWARE.md) |
+| find anything else | [Documentation](#documentation) |
 
 ### Packages
 
@@ -68,7 +83,7 @@ folders under `src/` (`base101/`, `base101_arm/`); colcon discovers packages
 recursively, so the folders are purely organisational. Packages parked out of
 the build live in [`attic/`](attic/README.md).
 
-**Core / shared** — `src/base101/`
+#### **Core / shared** — `src/base101/`
 
 | Package | Type | Purpose |
 |---|---|---|
@@ -77,15 +92,16 @@ the build live in [`attic/`](attic/README.md).
 | `base101_control_plugin` | ament_cmake | `ros2_control` SystemInterface bridging wheel/arm/camera command+state interfaces to the Axon firmware's `/motor_manager/*` topics (zenoh). Shared by all variants. |
 | `base101_gazebo` | ament_cmake | Sim-common: Gazebo worlds, ros↔gz bridge, RViz preset. |
 
-**Variant stacks** — each is a self-contained `description` + `gazebo` + `control` trio that includes the shared chassis and adds only its own hardware. You launch a variant package — never `base101_description`.
+#### **Variant stacks** 
+Each is a self-contained `description` + `gazebo` + `control` trio that includes the shared chassis and adds only its own hardware. You launch a variant package — never `base101_description`.
 
 | Variant | Folder | Adds to the chassis | Packages |
 |---|---|---|---|
 | **simple** | `src/base101/` | nothing (the bare base robot) | `base101_simple_{description,gazebo,control}` |
 | **arm** | `src/base101_arm/` | 1 mod101 arm on the chassis deck | `base101_arm_{description,gazebo,control,moveit_config}` |
-| ~~tower~~ | `attic/base101_tower/` | *parked* — lift column + pan/tilt head + 2 bracket arms | not built ([why](attic/README.md)) |
 
-The simple variant's `*_control` also carries the real-hardware bringup (`control_stack.launch.py`, the Axon hardware xacro) — see [`HARDWARE.md`](HARDWARE.md).
+
+
 
 **Other tooling** — `src/`
 
@@ -146,11 +162,44 @@ carried as a manifest dep by the `*_gazebo` package to avoid a cycle).
 Manual test procedures for every variant, tool and launch combination are in
 [`docs/testing.md`](docs/testing.md).
 
-### Quickstart
+### Build
+
+**This is the only place build is documented.** Everything else assumes you have
+run it.
+
+Bare chassis — no arm, no underlay:
 
 ```bash
-colcon build --symlink-install
+cd ~/robots/base101
+colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
 source install/setup.bash
+```
+
+With the arm (`arm:=true`, and anything under
+[The mod101 arm](#the-mod101-arm)), mod101 must be built and sourced first as an
+underlay:
+
+```bash
+cd ~/robots/mod101 && colcon build --symlink-install && source install/setup.bash
+cd ~/robots/base101
+colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
+source install/setup.bash
+```
+
+Two footnotes that will save you an afternoon:
+
+- **The `Python3_EXECUTABLE` pin is not arm-specific** — it applies to every
+  build in this workspace. It guards against a stray non-system python on `PATH`
+  breaking ament's `package.xml` parsing and `rosidl`'s `em` import. To stop
+  passing it by hand, set it once in `~/.colcon/defaults.yaml` — see
+  [`HARDWARE.md`](HARDWARE.md).
+- **`rosdep` doesn't know `mod101_description`.** It is an `exec_depend` of
+  `base101_arm_description` but not a rosdep key, so pass
+  `--skip-keys mod101_description` if you run `rosdep install`.
+
+### Run it
+
+```bash
 ros2 launch base101_simple_gazebo gazebo.launch.py                    # bare chassis, sticky_floor world
 ros2 launch base101_arm_gazebo    gazebo.launch.py arm:=true          # chassis + 1 mod101 arm
 ros2 launch base101_simple_gazebo gazebo.launch.py world:=empty.sdf   # pick a world
@@ -159,8 +208,6 @@ ros2 launch base101_simple_description display.launch.py              # rviz onl
 ```
 
 Web teleop is at `http://localhost:8888/` (rosboard) once the sim is up.
-(The arm variant needs the [mod101](https://github.com/robocore-dev/mod101)
-underlay built and sourced first.)
 
 `camera:=realsense|oak_d` picks which depth module hangs off the front bracket
 (default `realsense`). It swaps the mesh and the simulated FOV only — the
@@ -175,20 +222,7 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 launch base101_simple_control control_stack.launch.py
 ```
 
-### Cross tower (parked)
-
-The vertical tower — column with a prismatic **lift**, crossbeam with two
-arm-mount brackets, **pan/tilt head** with a camera — is **parked in
-[`attic/base101_tower/`](attic/README.md)** and is not built. It bolted onto
-`top_plate_1`, and the 2026-08 chassis re-export shrank that deck from
-340 × 240 mm to 180 × 240 mm and raised it 48 mm onto standoffs, so its mount
-origin no longer lands anywhere real. The lift was rough to begin with.
-
-To revive it: `git mv attic/base101_tower src/base101_tower`, then re-derive
-`tower_mount_xyz` in `urdf/tower.xacro` against the new deck. Background:
-[`docs/worklogs/tower.md`](docs/worklogs/tower.md).
-
-### mod101 arm
+## The mod101 arm
 
 The [mod101](https://github.com/robocore-dev/mod101) repo stays standalone —
 its arm is a prefix-parameterised xacro macro (`mod101_arm`, see
@@ -197,22 +231,32 @@ its arm is a prefix-parameterised xacro macro (`mod101_arm`, see
 joints `arm_1…6`. (The parked tower instantiated it twice on the crossbeam
 brackets, as `left_arm_1…6` / `right_arm_1…6`.)
 
-**Build** (mod101 first, then this workspace as an overlay — only needed
-when you actually use `arm:=true`):
+#### The overlay: exactly three crossing points
 
-```bash
-cd ~/Work/mod101  && colcon build --symlink-install && source install/setup.bash
-cd ~/Work/base101
-colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
-source install/setup.bash
-```
+mod101 is an **underlay** — built and sourced first, it puts its packages on
+`AMENT_PREFIX_PATH`. base101 is the overlay. **Nothing in mod101 knows base101
+exists**, and base101 reaches back across the boundary in only three places:
 
-(The `Python3_EXECUTABLE` pin guards against a stray non-system python on
-`PATH` breaking ament's package.xml parsing and `rosidl`'s `em` import — see
-the project-level `~/.colcon/defaults.yaml` note in [`HARDWARE.md`](HARDWARE.md).
-The `mod101_description` exec_depend in `base101_arm_description` is not a
-rosdep key — pass `--skip-keys mod101_description` to `rosdep install` if you
-use it.)
+| Crossing | Where, in base101 | What it pulls from mod101 |
+|---|---|---|
+| **Geometry** | `base101_arm_description/urdf/arm.xacro` | `<xacro:mod101_arm prefix="arm_" parent="top_plate_1">` from `mod101_macro.xacro` |
+| **Semantics** | `base101_arm_moveit_config/srdf/base101_arm.srdf.xacro` | `<xacro:mod101_arm_srdf prefix="arm_" tool=…>` from `mod101_moveit_config` |
+| **Build args** | both files above | `mod101_config.xacro` — rail lengths, servo mounts, active tool |
+
+Two macro calls and one config file. No forked packages, no vendored meshes, no
+duplicated URDF. That is what lets the parked tower mount the *same* macro twice
+(`left_arm_` / `right_arm_`) with zero changes upstream.
+
+Two consequences worth internalising:
+
+- **Only the `arm` variant crosses.** The `simple` variant never touches the
+  underlay, so a bare-chassis build needs no mod101 at all.
+- **The prefix renames everything the macro emits.** `joint_base` becomes
+  `arm_joint_base`; planning group `arm` becomes **`arm_arm`**. Every base101
+  config keys on the prefixed names. It reads badly and it is correct.
+
+**Build:** the arm needs the mod101 underlay built and sourced first — see
+[Build](#build). Everything below assumes that.
 
 **Launch:**
 
@@ -257,7 +301,7 @@ notes (mount-point measurement, the arm-yaw fix, the
 stale-`robot_state_publisher` gotcha):
 [`docs/worklogs/dual_arm.md`](docs/worklogs/dual_arm.md).
 
-### Teleop
+## Teleop
 
 Two ways to drive everything from a browser:
 
@@ -276,7 +320,7 @@ Two ways to drive everything from a browser:
   plus a hold-to-drive base pad. See
   [`src/base101_teleop/README.md`](src/base101_teleop/README.md).
 
-### Simulation
+## Simulation
 
 The robot runs in **Gazebo Sim** via `gz_ros2_control`. A `simulator` xacro
 arg on each variant (`gazebo` | `none`) selects whether the URDF carries the
@@ -287,22 +331,13 @@ publishes the standard `/cmd_vel_*`, `/odom`, `/scan`, `/joint_states`, and
 the shared `base101_gazebo` package.
 
 
-## Project Status
+## Documentation
 
-- [x] Chassis design (Fusion 360)
-- [x] Render and proportioning
-- [x] Motor selection and analysis
-- [x] Suspension design (PLA-CF adaptation)
-- [x] URDF/xacro
-- [x] Gazebo simulation
-- [x] ros2_control integration
-- [x] Cross tower (prismatic lift + pan/tilt head) — **tower** variant
-- [x] Single deck-mounted mod101 arm — **arm** variant
-- [x] Combined base101 + dual mod101 system (tower variant, `arms:=true`)
-- [x] Per-variant package split (simple / arm / tower stacks over a shared chassis)
-- [x] Web teleop for all joints (rosboard Joint sliders + `base101_teleop`)
-- [ ] E-stop handle mechanism
-- [ ] CNC top plate manufacturing files (DXF)
+
+
+
+
+
 
 ## Related Projects
 
@@ -311,5 +346,4 @@ the shared `base101_gazebo` package.
 - **[Forge](https://github.com/robocore-dev/forge)** — ROS2 deployment orchestration
 
 ## License
-
 MIT

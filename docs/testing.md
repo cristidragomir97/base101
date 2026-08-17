@@ -10,13 +10,18 @@ must pass before you ship anything that touched mod101.
 
 ## 0. Build
 
-mod101 is an **underlay**: build and source it first, always.
+mod101 is an **underlay**: build and source it first, always. Full rules and the
+reason for the `Python3_EXECUTABLE` pin are in the
+[README's Build section](../README.md#build) — this is the same thing, in one
+paste:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 
-cd ~/mod101      && colcon build --symlink-install && source install/setup.bash
-cd ~/robots/base101 && colcon build --symlink-install && source install/setup.bash
+cd ~/robots/mod101 && colcon build --symlink-install && source install/setup.bash
+cd ~/robots/base101
+colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
+source install/setup.bash
 ```
 
 Expect 8 packages in mod101 and 15 in base101. `base101_control_plugin`
@@ -38,7 +43,7 @@ disagreement without waiting for Gazebo.
 ```bash
 cd ~/robots/base101
 source /opt/ros/jazzy/setup.bash
-source ~/mod101/install/setup.bash
+source ~/robots/mod101/install/setup.bash
 source install/setup.bash
 
 # --- simple variant: 2 cameras x 3 simulators
@@ -236,10 +241,12 @@ servo mounts, and tool. base101 reads the same file, so a change must reach
 both.
 
 ```bash
-cd ~/mod101
-export BASE101_WS=~/robots/base101      # so it regenerates base101's matrices too
+cd ~/robots/mod101
 python3 configurator/server.py          # http://localhost:8000/
 ```
+
+The configurator regenerates **mod101's** matrices only. base101's are this
+workspace's responsibility — see 5b.
 
 ### 5a. It propagates
 
@@ -247,7 +254,7 @@ Set shoulder 0.21 m / elbow 0.19 m, pick a big shoulder motor, pick the parallel
 tool, Save. Then:
 
 ```bash
-grep default= ~/mod101/src/mod101_description/urdf/mod101_config.xacro
+grep default= ~/robots/mod101/src/mod101_description/urdf/mod101_config.xacro
 ```
 
 **Pass:** `shoulder_ext_length="0.2100"`, `elbow_ext_length="0.1900"`,
@@ -256,7 +263,7 @@ grep default= ~/mod101/src/mod101_description/urdf/mod101_config.xacro
 Rebuild both workspaces, then confirm both robots changed together:
 
 ```bash
-xacro ~/mod101/src/mod101_description/urdf/mod101.xacro | grep -m1 'box size="0.21'
+xacro ~/robots/mod101/src/mod101_description/urdf/mod101.xacro | grep -m1 'box size="0.21'
 xacro src/base101_arm/base101_arm_description/urdf/base101_arm.xacro \
       simulator:=none arm:=true | grep -m1 'box size="0.21'
 ```
@@ -274,19 +281,28 @@ ros2 launch base101_arm_gazebo gazebo.launch.py --show-args | grep -A2 "'arm_too
 
 ### 5b. It regenerates the collision matrices
 
-Saving kicks a background regeneration of both repos' matrices. Watch the
-configurator console for `[collisions] mod101: regenerated` /
-`[collisions] base101: regenerated`, or poll:
+Saving kicks a background regeneration of **mod101's** matrices. Watch the
+configurator console for `[collisions] mod101: regenerated`, or poll:
 
 ```bash
 curl -s localhost:8000/collisions
 ```
 
+The same response carries a `downstream` note reminding you that consumers
+regenerate themselves. Do that now, from this workspace:
+
+```bash
+./src/base101_arm/base101_arm_moveit_config/scripts/sync_arm_change.sh
+```
+
+**Pass:** it prints the mod101 underlay it resolved, then a per-tool pair count.
+**Fail:** `mod101 underlay not built` — build mod101, or set `MOD101_WS`.
+
 Then check the stamps:
 
 ```bash
 grep -m1 shoulder_ext_length \
-  ~/mod101/src/mod101_moveit_config/config/collisions/jaws.srdf.xacro
+  ~/robots/mod101/src/mod101_moveit_config/config/collisions/jaws.srdf.xacro
 grep -m1 shoulder_ext_length \
   src/base101_arm/base101_arm_moveit_config/config/collisions/jaws.srdf.xacro
 ```
@@ -297,11 +313,11 @@ matrix no longer describes the arm you are planning for.
 ### 5c. Regenerating by hand
 
 ```bash
-# base101 (chassis pairs) — all four tools, ~26 s
+# base101 (chassis pairs) — all four tools, minutes at the 1M default
 python3 src/base101_arm/base101_arm_moveit_config/scripts/gen_collision_matrix.py
 
 # mod101 (arm-internal pairs)
-python3 ~/mod101/tools/gen_collision_matrix.py
+python3 ~/robots/mod101/tools/gen_collision_matrix.py --trials 1000000
 ```
 
 If you increased the arm's reach, re-run with more trials and diff — "never
@@ -339,18 +355,18 @@ downstream consumer; mod101 must not have acquired a dependency on it.
 ```bash
 env -i HOME=$HOME USER=$USER PATH=/usr/bin:/bin bash -lc '
 source /opt/ros/jazzy/setup.bash
-source ~/mod101/install/setup.bash
+source ~/robots/mod101/install/setup.bash
 
 echo "base101 entries on the path: $(echo $AMENT_PREFIX_PATH | tr : "\n" | grep -c base101)"
 
 for t in jaws parallel none pincopen; do for m in small big; do
-  xacro ~/mod101/src/mod101_description/urdf/mod101.xacro \
+  xacro ~/robots/mod101/src/mod101_description/urdf/mod101.xacro \
         tool:=$t shoulder_mount:=$m elbow_mount:=$m >/dev/null \
     && printf "ok urdf/%s/%s " $t $m || printf "FAIL urdf/%s/%s " $t $m
 done; done; echo
 
 for t in jaws parallel none pincopen; do
-  xacro ~/mod101/src/mod101_moveit_config/srdf/mod101.srdf.xacro tool:=$t >/dev/null \
+  xacro ~/robots/mod101/src/mod101_moveit_config/srdf/mod101.srdf.xacro tool:=$t >/dev/null \
     && printf "ok srdf/%s " $t || printf "FAIL srdf/%s " $t
 done; echo
 
@@ -366,14 +382,19 @@ done; echo
 Also confirm the configurator works with no base101:
 
 ```bash
-BASE101_WS=/nonexistent python3 -c "
+python3 -c "
 import importlib.util
-s = importlib.util.spec_from_file_location('c', '$HOME/mod101/configurator/server.py')
+s = importlib.util.spec_from_file_location('c', '$HOME/robots/mod101/configurator/server.py')
 m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
-print('targets:', [l for l,_,_ in m._regen_targets()])"
+print('targets:', [l for l,_,_ in m._regen_targets()])
+print('downstream note:', bool(m.DOWNSTREAM_NOTE))"
 ```
 
-**Pass:** `targets: ['mod101']`.
+**Pass:** `targets: ['mod101']` and `downstream note: True`.
+
+This is now an invariant rather than a configuration: the configurator has no
+consumer-workspace setting at all, so there is nothing to unset. If a second
+label ever appears in `targets`, the dependency has been inverted again.
 
 And the standalone MoveIt bringup still plans:
 
@@ -402,7 +423,7 @@ Compare against these when something looks off. All measured at
 | composed robot links | 61 (arm variant, jaws) |
 | collision triangles | 0 chassis, ~5.4k total (gripper meshes only) |
 | visual triangles | ~92k (chassis + arm) |
-| disable_collisions in the SRDF | ~973 (122 arm-internal + ~850 chassis) |
+| disable_collisions in the SRDF | ~1022 (167 arm-internal + 855 chassis, tool=jaws) |
 
 ## 9. What failure looks like
 
