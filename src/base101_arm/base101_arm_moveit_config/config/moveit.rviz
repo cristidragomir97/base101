@@ -6,8 +6,8 @@ Panels:
       Expanded:
         - /MotionPlanning1
         - /MotionPlanning1/Planning Request1
-      Splitter Ratio: 0.74
-    Tree Height: 620
+      Splitter Ratio: 0.7400000095367432
+    Tree Height: 309
   - Class: rviz_common/Views
     Expanded:
       - /Current View1
@@ -17,12 +17,12 @@ Visualization Manager:
   Class: ""
   Displays:
     - Alpha: 0.5
-      Cell Size: 0.1
+      Cell Size: 0.10000000149011612
       Class: rviz_default_plugins/Grid
       Color: 160; 160; 164
       Enabled: true
       Line Style:
-        Line Width: 0.03
+        Line Width: 0.029999999329447746
         Value: Lines
       Name: Grid
       Normal Cell Count: 0
@@ -31,19 +31,13 @@ Visualization Manager:
         Y: 0
         Z: 0
       Plane: XY
-      # 10 x 0.1 m = a 1 m grid. mod101 is a desktop-scale arm; the RViz
-      # default of 1 m cells puts the whole robot inside one square.
       Plane Cell Count: 10
       Reference Frame: <Fixed Frame>
       Value: true
-    - Class: moveit_rviz_plugin/MotionPlanning
+    - Acceleration_Scaling_Factor: 0.9
+      Class: moveit_rviz_plugin/MotionPlanning
       Enabled: true
       Move Group Namespace: ""
-      # Approximate IK matters on this arm. Dragging the interactive marker asks
-      # for IK at a full 6-DOF pose, and mod101 has 5 joints — it can't match an
-      # arbitrary orientation. pick_ik is configured position-only so it
-      # normally succeeds anyway, but allowing approximate solutions keeps the
-      # marker from going red at the edges of the workspace. See docs/moveit.md.
       MoveIt_Allow_Approximate_IK: true
       MoveIt_Allow_External_Program: false
       MoveIt_Allow_Replanning: false
@@ -71,6 +65,305 @@ Visualization Manager:
           Expand Link Details: false
           Expand Tree: false
           Link Tree Style: Links in Alphabetic Order
+          arm_arm_extrusion_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_base_cover_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_base_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_camera_adapter_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_camera_wing_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_elbow_adapter_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_elbow_link_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_forearm_extrusion_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_jaws_body:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_jaws_moving:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_jaws_root:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          arm_jaws_servo:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_servo_base_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_servo_elbow_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_servo_shoulder_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_servo_wrist_rotation_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_servo_wrist_tilt_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_shoulder_adapter_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_shoulder_rotation_link_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_wrist_camera_v1_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_wrist_flange:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          arm_wrist_roll_adapter_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_wrist_servo_adapter_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          base_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          box_back_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          box_front_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          box_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          box_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          bumper_back_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          bumper_back_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          bumper_front_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          bumper_front_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          camera_edge_bracket_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          camera_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          camera_optical_frame:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          camera_realsense_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          imu_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          jetson_mount_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          lidar_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          lidar_frame:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          lidar_mount_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          link_101_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          mount_back_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          mount_back_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          mount_front_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          mount_front_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          orin_simplified_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          orp_link101_mount_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          standoff_back_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          standoff_back_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          standoff_front_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          standoff_front_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          top_plate_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_back_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_back_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_front_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_front_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_hub_back_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_hub_back_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_hub_front_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_hub_front_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
         Loop Animation: false
         Robot Alpha: 0.5
         Robot Color: 150; 50; 150
@@ -87,14 +380,12 @@ Visualization Manager:
         Show Manipulability: false
         Show Manipulability Index: false
         Show Weight Limit: false
-        TextHeight: 0.08
+        TextHeight: 0.07999999821186066
       Planning Request:
         Colliding Link Color: 255; 0; 0
         Goal State Alpha: 1
         Goal State Color: 250; 128; 0
-        # Explicit, not auto (0): auto-scaling sizes the marker off the robot's
-        # bounding box and swamps a 0.4 m arm.
-        Interactive Marker Size: 0.1
+        Interactive Marker Size: 0.10000000149011612
         Joint Violation Color: 255; 0; 255
         Planning Group: arm_arm
         Query Goal State: true
@@ -105,9 +396,9 @@ Visualization Manager:
       Planning Scene Topic: monitored_planning_scene
       Robot Description: robot_description
       Scene Geometry:
-        Scene Alpha: 0.9
+        Scene Alpha: 0.8999999761581421
         Scene Color: 50; 230; 50
-        Scene Display Time: 0.2
+        Scene Display Time: 0.20000000298023224
         Show Scene Geometry: true
         Voxel Coloring: Z-Axis
         Voxel Rendering: Occupied Voxels
@@ -119,19 +410,324 @@ Visualization Manager:
           Expand Link Details: false
           Expand Tree: false
           Link Tree Style: Links in Alphabetic Order
+          arm_arm_extrusion_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_base_cover_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_base_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_camera_adapter_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_camera_wing_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_elbow_adapter_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_elbow_link_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_forearm_extrusion_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_jaws_body:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_jaws_moving:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_jaws_root:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          arm_jaws_servo:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_servo_base_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_servo_elbow_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_servo_shoulder_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_servo_wrist_rotation_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_servo_wrist_tilt_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_shoulder_adapter_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_shoulder_rotation_link_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_wrist_camera_v1_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_wrist_flange:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          arm_wrist_roll_adapter_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          arm_wrist_servo_adapter_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          base_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          box_back_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          box_front_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          box_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          box_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          bumper_back_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          bumper_back_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          bumper_front_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          bumper_front_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          camera_edge_bracket_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          camera_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          camera_optical_frame:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          camera_realsense_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          imu_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          jetson_mount_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          lidar_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          lidar_frame:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          lidar_mount_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          link_101_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          mount_back_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          mount_back_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          mount_front_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          mount_front_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          orin_simplified_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          orp_link101_mount_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          standoff_back_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          standoff_back_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          standoff_front_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          standoff_front_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          top_plate_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_back_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_back_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_front_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_front_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_hub_back_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_hub_back_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_hub_front_left_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          wheel_hub_front_right_1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
         Robot Alpha: 0.5
         Show Robot Collision: false
         Show Robot Visual: true
       Value: true
-      Velocity_Scaling_Factor: 0.3
+      Velocity_Scaling_Factor: 0.8
     - Class: rviz_default_plugins/TF
       Enabled: false
+      Filter (blacklist): ""
+      Filter (whitelist): ""
       Frame Timeout: 15
-      Marker Scale: 0.2
+      Frames:
+        All Enabled: true
+      Marker Scale: 0.20000000298023224
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: true
+      Tree:
+        {}
       Update Interval: 0
       Value: false
   Enabled: true
@@ -152,36 +748,39 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 1.0
+      Distance: 1
       Enable Stereo Rendering:
-        Stereo Eye Separation: 0.06
+        Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 0
-        Y: 0
-        Z: 0.15
+        X: 0.1380332112312317
+        Y: -0.09920188039541245
+        Z: 0.30068957805633545
       Focal Shape Fixed Size: true
-      Focal Shape Size: 0.05
+      Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
-      Near Clip Distance: 0.01
-      Pitch: 0.42
+      Near Clip Distance: 0.009999999776482582
+      Pitch: 0.8649997115135193
       Target Frame: world
       Value: Orbit (rviz)
-      Yaw: 0.92
+      Yaw: 0.5550013780593872
     Saved: ~
 Window Geometry:
   Displays:
     collapsed: false
-  Height: 1000
+  Height: 1359
   Hide Left Dock: false
   Hide Right Dock: false
   MotionPlanning:
     collapsed: false
+  MotionPlanning - Trajectory Slider:
+    collapsed: false
+  QMainWindow State: 000000ff00000000fd0000000100000000000002b4000004f9fc0200000004fb00000044004d006f00740069006f006e0050006c0061006e006e0069006e00670020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000003f00fffffffb0000001c004d006f00740069006f006e0050006c0061006e006e0069006e0067010000003b000002120000016900fffffffb000000100044006900730070006c0061007900730100000253000001be000000c700fffffffb0000000a0056006900650077007301000004170000011d000000a000ffffff0000073a000004f900000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Views:
     collapsed: false
-  Width: 1600
-  X: 100
-  Y: 60
+  Width: 2548
+  X: 0
+  Y: 0

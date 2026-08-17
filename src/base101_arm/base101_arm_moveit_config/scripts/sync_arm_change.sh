@@ -63,8 +63,10 @@ cat <<'EOF'
 Done. The build args were read from the mod101 underlay, so these matrices now
 match whatever the configurator last saved.
 
-Rebuild is not needed if this workspace used --symlink-install; relaunch to pick
-the new matrices up:
+These matrices live in an ament_cmake package, so --symlink-install has them
+linked back to src/ and no rebuild is needed. (URDF/xacro edits are different:
+those packages are ament_python and install by copy, so they DO need a build.)
+Relaunch to pick the new matrices up:
 
     ros2 launch base101_arm_moveit_config demo.launch.py
 EOF

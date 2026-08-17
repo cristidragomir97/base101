@@ -242,6 +242,21 @@ def _setup(context, *args, **kwargs):
             parameters=[{'use_sim_time': True}],
             output='screen',
         ))
+        # Intrinsics. ros_gz_image bridges the image stream only, so without
+        # this the wrist camera publishes pixels with no camera_info and
+        # nothing can project them into 3D — robocore_agent reports it as
+        # "camera has no intrinsics". Its own node rather than an entry in
+        # base101_gazebo's gz_ros_bridge.yaml, because that config is shared
+        # with the armless `simple` variant, which has no wrist camera.
+        actions.append(Node(
+            package='ros_gz_bridge',
+            executable='parameter_bridge',
+            name='arm_wrist_camera_info_bridge',
+            arguments=['/arm_wrist_camera/camera_info@sensor_msgs/msg/'
+                       'CameraInfo[gz.msgs.CameraInfo'],
+            parameters=[{'use_sim_time': True}],
+            output='screen',
+        ))
 
     return actions
 

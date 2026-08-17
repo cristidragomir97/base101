@@ -73,11 +73,29 @@
      fitted, +X out of the lens) so rgb and depth share intrinsics, stamps and
      frame: robocore's get_depth / get_synced / deproject / get_cloud all
      assume that pairing. Topic names stay /base_camera/* whichever camera the
-     `camera` arg selects, so the gz bridges do not care. -->
+     `camera` arg selects, so the gz bridges do not care.
+
+     FRAME: messages are stamped with camera_optical_frame (REP-103 optical
+     axes: z out of the lens, x right, y down), NOT camera_link. That is what
+     the real drivers do — realsense2_camera sets both
+     `camera_info.header.frame_id` and `img_msg->header.frame_id` from
+     OPTICAL_FRAME_ID(), and depthai publishes oak_*_camera_optical_frame — so
+     sim and hardware agree and nothing has to be re-taught when the real
+     module goes on.
+
+     Keeping ONE optical frame shared by rgb and depth is deliberate. Real
+     hardware exposes a per-sensor frame each, but depth is normally aligned to
+     colour (realsense `align_depth`), which publishes depth in the colour
+     optical frame — the same pairing robocore's deprojection needs.
+
+     ROBOCORE: the camera's profile entry must say `optical: true`. With
+     `optical: false` robocore applies its OPTICAL_TO_LINK rotation to points
+     that are already optical, and every deprojection is silently wrong by 90
+     degrees. See docs/robocore-camera-frames.md. -->
 <gazebo reference="camera_link">
   <sensor name="base_camera" type="camera">
     <topic>base_camera/image_raw</topic>
-    <gz_frame_id>camera_link</gz_frame_id>
+    <gz_frame_id>camera_optical_frame</gz_frame_id>
     <update_rate>30</update_rate>
     <always_on>1</always_on>
     <visualize>true</visualize>
@@ -97,7 +115,7 @@
 
   <sensor name="base_camera_depth" type="depth_camera">
     <topic>base_camera/depth_image</topic>
-    <gz_frame_id>camera_link</gz_frame_id>
+    <gz_frame_id>camera_optical_frame</gz_frame_id>
     <update_rate>30</update_rate>
     <always_on>1</always_on>
     <visualize>false</visualize>

@@ -464,7 +464,30 @@
 </joint>
 
 <!-- ================================ bumpers ================================
-     TPU corner pieces, press-fit onto the extrusion ends. -->
+     TPU corner pieces, press-fit onto the extrusion ends.
+
+     2026-08 revision: rounded cosmetic redesign. The press-fit body is
+     UNCHANGED at 60 x 60 x 66 mm and still sits on the extrusion at |x|=130,
+     |y|=80 mm. What is new is two 12 mm fins (at z=-20..-8 and -52..-40 in CAD)
+     that protrude 5 mm further out, so the envelope grows 380 x 280 ->
+     390 x 290 mm. The top plate is shorter than the bumpers in X, so the
+     bumpers set the footprint in both axes.
+
+     IMPORTING A NEW EXPORT — three things bit us, in order:
+
+       1. bumper_assembly.stl holds THREE disconnected bodies (main + 2 fins),
+          not one. Treat them as one part but datum on the MAIN body, not on
+          the whole-assembly bounding box, or the fins pull the datum 5 mm off.
+       2. The export is the FRONT-RIGHT corner: its fins protrude +X and -Y.
+          For a target quadrant (qx, qy) the mirror is (qx, -qy).
+       3. The export's absolute XY is arbitrary (Z happens to be right), so
+          datum the main body's inner faces to |x|=130, |y|=80 rather than
+          trusting the exported position.
+
+     Only one corner is exported; the other three are mirrors, as before.
+
+     Collision stays a box primitive, not the mesh: the part is rounded with no
+     flat faces, and a 65 mm box covering body+fins is cheap and conservative. -->
 
 <link name="bumper_front_left_1">
   <inertial>
@@ -480,9 +503,9 @@
     <material name="plastic_black"/>
   </visual>
   <collision>
-    <origin xyz="-0.01 -0.01 -0.033" rpy="0 0 0"/>
+    <origin xyz="-0.0075 -0.0075 -0.033" rpy="0 0 0"/>
     <geometry>
-      <box size="0.06 0.06 0.066"/>
+      <box size="0.065 0.065 0.066"/>
     </geometry>
   </collision>
 </link>
@@ -501,9 +524,9 @@
     <material name="plastic_black"/>
   </visual>
   <collision>
-    <origin xyz="-0.01 0.01 -0.033" rpy="0 0 0"/>
+    <origin xyz="-0.0075 0.0075 -0.033" rpy="0 0 0"/>
     <geometry>
-      <box size="0.06 0.06 0.066"/>
+      <box size="0.065 0.065 0.066"/>
     </geometry>
   </collision>
 </link>
@@ -522,9 +545,9 @@
     <material name="plastic_black"/>
   </visual>
   <collision>
-    <origin xyz="0.01 -0.01 -0.033" rpy="0 0 0"/>
+    <origin xyz="0.0075 -0.0075 -0.033" rpy="0 0 0"/>
     <geometry>
-      <box size="0.06 0.06 0.066"/>
+      <box size="0.065 0.065 0.066"/>
     </geometry>
   </collision>
 </link>
@@ -543,9 +566,9 @@
     <material name="plastic_black"/>
   </visual>
   <collision>
-    <origin xyz="0.01 0.01 -0.033" rpy="0 0 0"/>
+    <origin xyz="0.0075 0.0075 -0.033" rpy="0 0 0"/>
     <geometry>
-      <box size="0.06 0.06 0.066"/>
+      <box size="0.065 0.065 0.066"/>
     </geometry>
   </collision>
 </link>
@@ -784,7 +807,12 @@
 <!-- ================================= camera =================================
      One bracket, two options. camera_link is the front face of whichever
      module is fitted, +X out of the lens; camera_optical_frame is the
-     REP-103 optical twist of it for point clouds. -->
+     REP-103 optical twist of it (z out of the lens, x right, y down).
+
+     camera_optical_frame is what image and camera_info messages are stamped
+     with — matching realsense2_camera and depthai, so the frame graph does not
+     change when the real module replaces the sim one. camera_link stays the
+     mount point you position in CAD. See docs/robocore-camera-frames.md. -->
 
 <link name="camera_edge_bracket_1">
   <inertial>

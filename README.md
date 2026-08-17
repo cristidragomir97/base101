@@ -1,63 +1,25 @@
 # base101
 
+An open-source 4WD mobile robot platform designed to carry the mod101 arm and other payloads. Built from 60×20 aluminum extrusion, PLA-CF printed parts, and Waveshare DDSM hub motors.
+
 <p align="center">
-  <img src="img/simple.webp" alt="base101" width="60%" />
+      <img src="img/moneyshot.png" alt="base101" width="100%" />
 </p>
 
-An open-source 4WD mobile robot platform designed to carry the mod101 arm and other payloads. Built from 60×20 aluminum extrusion, PLA-CF printed parts, and Waveshare DDSM hub motors.
+
+- 🧱 **Real frame, not a printed box** — 60×20 aluminum extrusion, PLA-CF printed parts only where they earn their place.
+- 🕳️ **A deck you can bolt anything to** — 280×400 mm aluminum plate, 3 mm thick, CNC-machined ORP compatible grid. 
+- 💥 **TPU corners** — printed bumpers absorb the collisions you're going to have, and spare your furniture while you tune the planner.
+- 🛞 **4WD skid steer on hub motors** — four Waveshare DDSM210 direct-drive hubs. No gearboxes, no belts, nothing to slip: the wheel *is* the motor.
+- 💪 **Sized for a 5–8 kg robot** — 97 N of tractive force at stall, enough to push 8 kg up a 10% incline. Arm, battery and compute, and it still clears the threshold into the next room.
+- 🛰️ **360° lidar** — RPLidar C1 up front, `/scan` at ~10 Hz into SLAM and Nav2. Mapping and autonomous nav work out of the box.
+- 👁️ **Swappable depth camera** — RealSense D435 or Luxonis OAK-D on the same bracket, one launch arg apart. Same topics, same frames.
+- 🧠 **One board runs the base** — built around the [link101](https://github.com/robocore-dev/link101-hw)
+- 🤖 **Carries the [mod101](https://github.com/robocore-dev/mod101) arm** — one xacro line, plus MoveIt config for the *composed* robot: the arm knows the chassis it stands on.
+
 
 **Here to build the robot?** The hardware is described below. **Here to run the
 code?** Skip to [Software](#software) — or straight to [Build](#build).
-
-## At a Glance
-
-| | base101 |
-|---|---|
-| Motors | 4× DDSM210 |
-| Drive | 4WD skid steer |
-| Torque (per motor) | 0.85 N·m stall |
-| Load capacity | ~12kg total |
-| Suspension | PLA-CF printed |
-| Footprint | 280 × 400mm |
-| Lidar | RPLidar C1 |
-| Depth camera | RealSense D435 |
-| BOM | ~$340 |
-
-
-## Chassis
-
-**Frame:** 60×20 aluminum extrusion, black anodized. Two parallel rails connected at the corners by PLA-CF printed mounts. The thin profile keeps the center of gravity low — this is a MacBook Air, not a brick.
-
-**Top plate:** 280×400mm aluminum, 3mm thick, CNC-machined grid of M3 tapped holes on 20mm spacing. Mount anything anywhere — the arm, the lidar, the compute, accessories. No adapters, no T-nuts, just bolt it down.
-
-**Bumpers:** TPU printed corner pieces. Absorb collisions, protect furniture, and visually soften the rectangular chassis. Press-fit onto the extrusion corners, no fasteners needed.
-
-
-## Drivetrain
-
-**4WD skid steer.** Four hub motors, all driven. Turn-in-place capability. No mecanum wheels, no omni wheels — just rubber tires on smooth direct-drive motors. Quiet, clean, simple kinematics.
-
-
-### DDSM210
-
-- 0.25 N·m rated / 0.85 N·m stall
-- ~65mm diameter, 216g
-- UART bus, 9-28V
-- ~$25 each
-
-Sized for a 5-8kg robot. Four wheels provide 97 N total tractive force at stall — enough to move 8kg up a 10% incline.
-
-
-## Sensors
-
-### RPLidar C1
-
-Mounted on the top plate. 360° DTOF scanning, 12m range, 5000 samples/sec. Handles SLAM, mapping, and obstacle detection. ROS2 driver available out of the box.
-
-### Intel RealSense D435
-
-Front-mounted between the extrusion rails. 87° wide FOV for spatial awareness and 3D perception. Provides point cloud data for obstacle avoidance and workspace mapping. The wide field of view captures the arm's entire workspace in front of the robot.
-
 
 ---
 
@@ -333,11 +295,23 @@ the shared `base101_gazebo` package.
 
 ## Documentation
 
+**Use it**
 
+- **[`HARDWARE.md`](HARDWARE.md)** — real-robot bringup: Axon 2 firmware, the zenoh router, serial devices, udev
+- **[`docs/testing.md`](docs/testing.md)** — manual test procedures for every variant, tool and launch combination
 
+**Build on it**
 
+- **[`src/base101_arm/base101_arm_moveit_config/README.md`](src/base101_arm/base101_arm_moveit_config/README.md)** — motion planning for the composed robot, and the sync step after the arm is reconfigured
+- **[`src/base101/base101_description/README.md`](src/base101/base101_description/README.md)** — the shared chassis library
+- **[`docs/robocore-camera-frames.md`](docs/robocore-camera-frames.md)** — camera frame conventions, and the `optical: true` change robocore-sdk still needs
+- **[`docs/obstacle-awareness.md`](docs/obstacle-awareness.md)** — where perceived obstacles should live relative to a picking layer
 
+**History** — kept for reasoning, not as current documentation
 
+- **[`docs/worklogs/dual_arm.md`](docs/worklogs/dual_arm.md)** — dual-arm integration: mount-point measurement, the arm-yaw fix, the stale-`robot_state_publisher` gotcha
+- **[`docs/worklogs/tower.md`](docs/worklogs/tower.md)** — the parked cross tower
+- **[`docs/worklogs/nav.md`](docs/worklogs/nav.md)**, **[`docs/worklogs/nav_restructure.md`](docs/worklogs/nav_restructure.md)** — Nav2 + slam_toolbox porting notes. **These describe `src/base101_nav/` and a `base101.repos` file, neither of which is in this workspace** — read them as history, not instructions.
 
 ## Related Projects
 

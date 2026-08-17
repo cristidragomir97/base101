@@ -213,10 +213,20 @@ def generate(tool, trials, args):
         srdf_in.write_text(bootstrap_srdf(tool))
         nlinks = len(re.findall(r'<link name=', urdf_text))
 
+        # collisions_updater is an offline tool: it loads a URDF/SRDF, samples,
+        # writes a file, and talks to nobody. But it is a ROS node, so it
+        # inherits RMW_IMPLEMENTATION from the environment — and under
+        # rmw_zenoh_cpp it *aborts during teardown*
+        # (ze_undeclare_advanced_publisher -> abort, exit 250) after the output
+        # is already correctly written. The non-zero exit then fails this whole
+        # script, and via the configurator surfaces as "[collisions] mod101
+        # failed". Pin a middleware for the subprocess; the choice is arbitrary
+        # because nothing subscribes to it.
+        env = {**os.environ, 'RMW_IMPLEMENTATION': 'rmw_fastrtps_cpp'}
         run(['ros2', 'run', 'moveit_setup_assistant', 'collisions_updater',
              '--urdf', str(urdf), '--srdf', str(srdf_in),
              '--output', str(srdf_out),
-             '--default', '--always', '--trials', str(trials)])
+             '--default', '--always', '--trials', str(trials)], env=env)
 
         pairs = re.findall(r'<disable_collisions[^/]*/>', srdf_out.read_text())
 
