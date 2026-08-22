@@ -1,13 +1,15 @@
 <?xml version="1.0" ?>
 <robot name="base101_arm" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-<!-- One mod101 arm on the chassis deck. Included from base101_arm.xacro when
-     arm:=true. mod101 stays a standalone repo: build it first and source its
-     install as an underlay, then build this workspace.
+<!-- One mod101 arm on the chassis deck. Included from base101.xacro when
+     arm:=true, and only then — this file resolves $(find mod101_description),
+     so an armless workspace must never process it. mod101 stays a standalone
+     repo: build it first and source its install as an underlay, then build
+     this workspace.
 
      Joint names get the arm_ prefix (arm_joint_base ... arm_joint_wrist_roll,
      plus the tool's arm_6); controllers live in
-     base101_arm_control/config/controllers.sim.yaml. -->
+     base101_control/config/controllers.{sim,hw}.yaml. -->
 
 <!-- How the arm is built is the web configurator's call, not ours. Including
      mod101_config.xacro gives us the same tool + rail lengths + servo mounts

@@ -1,22 +1,29 @@
 # base101_description
 
-The **shared chassis library** for the base101 robot: the common base —
-extrusion frame, wheels, mounts, bumpers, lidar, camera, compute tray, the
-`top_plate_1` deck — plus materials, sensors, and meshes.
+**The robot.** The common base — extrusion frame, wheels, mounts, bumpers,
+lidar, camera, compute tray, the `top_plate_1` deck — plus materials, sensors,
+meshes, and the top-level assembly that turns them into a complete robot.
 
-This package is a *parts library, not a launchable robot*. It exposes
-`chassis.xacro` (a link/joint fragment) that every variant includes; you never
-load it directly. The variant packages assemble it into complete robots:
+`base101.xacro` is the entry point. One description for every configuration:
 
-| Variant | Package | Adds |
+| Argument | Values | Adds |
 |---|---|---|
-| simple | `base101_simple_description` | nothing (bare chassis) |
-| arm    | `base101_arm_description`    | 1 mod101 arm on `top_plate_1` |
-| ~~tower~~ | `attic/base101_tower/` | *parked* — see [attic](../../../attic/README.md) |
+| `arm` | `false` (default) / `true` | one mod101 arm on `top_plate_1` |
+| `camera` | `realsense` (default) / `oak_d` | which depth module is on the front bracket |
+| `simulator` | `gazebo` / `mujoco` / `isaac` / `none` | which ros2_control + extension tags to emit |
+| ~~tower~~ | — | *parked* — see [attic](../../../attic/README.md) |
 
-Each variant `xacro:include`s `chassis.xacro` + `materials.xacro`, picks the
-sim wiring for its `simulator` arg, and adds its own links. See the top-level
+Before the 2026-08 restructure this was a parts library and each variant had
+its own assembly package; `arm` is now an argument, not a package. See
+[`docs/bringup-restructure.md`](../../../docs/bringup-restructure.md).
+
+You still don't launch this package — the bringup packages do
+(`base101_bringup_gazebo`, `base101_bringup_hw`). See the top-level
 [README](../../../README.md) for the package-structure graph.
+
+**`arm.xacro` must stay inside its `<xacro:if>`.** It resolves
+`$(find mod101_description)`, and keeping the include conditional is what lets
+an armless workspace build and run with no mod101 underlay at all.
 
 ## Files
 
@@ -163,7 +170,7 @@ than dissolving it.
 - **`top_plate_1` is the deck every add-on parents to.** It is now 180 × 240 mm
   and rides 45 mm of standoff (130 mm off the floor); the previous export had a
   340 × 240 mm plate sitting straight on the extrusion at 82 mm. That change
-  made `base101_arm_description`'s own mount deck redundant — it was an
+  made the arm overlay's own mount deck redundant — it was an
   identical 180 × 240 plate on identical 45 mm standoffs, stacked on this one —
   so the arm now bolts directly here. Moving or renaming `top_plate_1` ripples
   into that package.

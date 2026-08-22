@@ -2,16 +2,19 @@
 """move_group for the composed base101 + mod101 robot.
 
 The counterpart of mod101_moveit_config/launch/move_group.launch.py, but built
-from base101_arm_description/urdf/base101_arm.xacro instead of the standalone
-arm, so the planning scene contains the chassis the arm is bolted to.
+from base101_description/urdf/base101.xacro with arm:=true instead of the
+standalone arm, so the planning scene contains the chassis the arm is bolted to.
 
-This starts move_group only. Bring the robot up separately, with the trajectory
-controllers rather than the slider ones:
+This starts move_group only, and is a stack launch: normally you do not run it
+directly, you ask the bringup for it, which starts the sim with the trajectory
+controllers and then move_group in the right order —
 
-    ros2 launch base101_arm_gazebo gazebo.launch.py arm_control:=moveit
+    ros2 launch base101_bringup_gazebo sim.launch.py arm:=true moveit:=true
+
+Running it by hand against an already-up sim still works:
+
+    ros2 launch base101_bringup_gazebo sim.launch.py arm:=true arm_control:=moveit
     ros2 launch base101_arm_moveit_config move_group.launch.py
-
-or use demo.launch.py, which does both in the right order.
 
 Launch args:
     arm_tool                                  mod101_tool_<name>; default is
@@ -63,12 +66,12 @@ def build_moveit_config(context):
         {k: LaunchConfiguration(k).perform(context) for k in BUILD_ARGS})
 
     pkg = get_package_share_directory('base101_arm_moveit_config')
-    urdf = os.path.join(get_package_share_directory('base101_arm_description'),
-                        'urdf', 'base101_arm.xacro')
+    urdf = os.path.join(get_package_share_directory('base101_description'),
+                        'urdf', 'base101.xacro')
     srdf = os.path.join(pkg, 'srdf', 'base101_arm.srdf.xacro')
 
     return (
-        MoveItConfigsBuilder('base101_arm', package_name='base101_arm_moveit_config')
+        MoveItConfigsBuilder('base101', package_name='base101_arm_moveit_config')
         # simulator=gazebo keeps the gz_ros2_control blocks in the description
         # so this URDF matches the one the sim spawned byte for byte.
         .robot_description(file_path=urdf,

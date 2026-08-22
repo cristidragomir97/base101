@@ -1,0 +1,25 @@
+<!--
+  Minimal Navigate Through Poses for base101 + robocore.
+
+  Same philosophy as nav_to_pose.xml: plan, follow, fail. No recovery,
+  no spin/wait/backup (no behavior_server in this stack - bt_navigator
+  refuses to activate if the BT references absent action servers).
+  Nav2 returns ABORTED on any failure; the Python mission layer decides
+  what happens next. RemovePassedGoals is BT-internal (no action server)
+  and keeps waypoint progress working.
+-->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <PipelineSequence name="NavigateThroughPosesWithReplanning">
+      <RateController hz="0.333">
+        <ReactiveSequence>
+          <RemovePassedGoals input_goals="{goals}" output_goals="{goals}" radius="0.7"/>
+          <ComputePathThroughPoses goals="{goals}" path="{path}" planner_id="GridBased"
+                                   error_code_id="{compute_path_error_code}"/>
+        </ReactiveSequence>
+      </RateController>
+      <FollowPath path="{path}" controller_id="FollowPath"
+                  error_code_id="{follow_path_error_code}"/>
+    </PipelineSequence>
+  </BehaviorTree>
+</root>

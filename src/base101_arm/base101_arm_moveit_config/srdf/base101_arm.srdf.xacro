@@ -28,7 +28,7 @@
   `${prefix}arm` / `${prefix}gripper`, and the prefix is `arm_`. Ugly but
   consistent; config/*.yaml key on the same names.
 -->
-<robot name="base101_arm" xmlns:xacro="http://www.ros.org/wiki/xacro">
+<robot name="base101" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
 <!-- Must match what base101_arm.xacro was expanded with. Defaults come from
      the mod101 configurator via mod101_config.xacro, so leaving them alone

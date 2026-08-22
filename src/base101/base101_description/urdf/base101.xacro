@@ -1,0 +1,70 @@
+<?xml version="1.0" ?>
+<!-- base101: THE robot.
+
+     One description for every configuration. What used to be two packages of
+     near-identical xacro (base101_simple_description / base101_arm_description,
+     differing by two lines) is now two arguments here.
+
+       arm:=false   bare chassis
+       arm:=true    chassis + one deck-mounted mod101 arm
+
+     The mod101 underlay is only needed for arm:=true. arm.xacro is included
+     inside a <xacro:if>, so with arm:=false xacro never processes it and
+     never resolves $(find mod101_description) — an armless workspace builds
+     and launches with no mod101 in sight. Do not lift that include out of
+     the conditional.
+
+     See docs/bringup-restructure.md. -->
+<robot name="base101" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- gazebo | mujoco | isaac | none. `none` = real-hw / rviz-only (no sim
+       ros2_control or extension tags). -->
+  <xacro:arg name="simulator" default="gazebo"/>
+
+  <!-- Which module is on the front bracket: realsense | oak_d. Declared by
+       chassis.xacro too; repeated here so this file's argument list is
+       complete and it can be overridden per launch. -->
+  <xacro:arg name="camera" default="realsense"/>
+
+  <!-- Mount one mod101 arm on the deck. Requires the mod101 underlay. -->
+  <xacro:arg name="arm" default="false"/>
+
+  <!-- Shared chassis: chassis links + materials. -->
+  <xacro:include filename="$(find base101_description)/urdf/materials.xacro"/>
+  <xacro:include filename="$(find base101_description)/urdf/chassis.xacro"/>
+
+  <!-- One mod101 arm on the chassis deck. arm_tool is declared inside
+       arm.xacro (defaulting to the web configurator's saved tool); declaring
+       it here with a literal default would shadow that. -->
+  <xacro:if value="$(arg arm)">
+    <xacro:include filename="$(find base101_description)/urdf/arm.xacro"/>
+  </xacro:if>
+
+  <xacro:if value="${'$(arg simulator)' == 'gazebo'}">
+    <!-- Wheel ros2_control system (GazeboSimSystem) + sensor/material tags. -->
+    <xacro:include filename="$(find base101_description)/urdf/chassis.gazebo.ros2control"/>
+    <xacro:include filename="$(find base101_description)/urdf/chassis.gazebo"/>
+    <!-- gz_ros2_control creates the controller_manager when the model is
+         spawned and loads this file onto it. One file for every
+         configuration: it declares the arm controllers too, but declaring a
+         controller only makes it spawnable by name — an armless robot never
+         spawns them, so the extra entries cost nothing. The arm joints'
+         own ros2_control blocks are emitted by the mod101 macro in
+         arm.xacro (use_sim=true). -->
+    <gazebo>
+      <plugin filename="gz_ros2_control-system"
+              name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+        <parameters>$(find base101_control)/config/controllers.sim.yaml</parameters>
+      </plugin>
+    </gazebo>
+  </xacro:if>
+
+  <xacro:if value="${'$(arg simulator)' == 'mujoco'}">
+    <xacro:include filename="$(find base101_description)/urdf/chassis.mujoco.ros2control"/>
+  </xacro:if>
+
+  <!-- simulator=isaac: driven natively from base101_isaac (no ros2_control).
+       simulator=none: real-hw ros2_control comes from base101_control's
+       hardware xacro (base101.hardware.xacro). -->
+
+</robot>

@@ -58,13 +58,14 @@ source /opt/ros/jazzy/setup.bash
 source ~/Work/base101/install/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 
-ros2 launch base101_control control_stack.launch.py variant:=simple   # or pro
+ros2 launch base101_bringup_hw robot.launch.py
 ```
 
 This starts `robot_state_publisher` (from `base101.hardware.xacro`, i.e.
 `simulator:=none` + the Axon bridge), the `controller_manager` with
 `controllers.hw.yaml`, the `joint_state_broadcaster` + `diff_drive_controller`,
-and a `twist_mux` in front of `/diff_drive_controller/cmd_vel`.
+a `twist_mux` in front of `/diff_drive_controller/cmd_vel`, and then SLAM +
+Nav2. Add `nav:=false slam:=false` for wheels only.
 
 Drive it:
 ```

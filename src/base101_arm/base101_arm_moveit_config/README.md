@@ -30,8 +30,8 @@ config/
 ├── moveit.rviz               fixed frame base_link, group arm_arm
 └── collisions/<tool>.srdf.xacro   GENERATED — chassis pairs only
 launch/
-├── move_group.launch.py      move_group alone (bring the robot up yourself)
-└── demo.launch.py            gazebo + move_group, in order
+└── move_group.launch.py      move_group alone; base101_bringup_gazebo composes
+                              it via sim.launch.py moveit:=true
 scripts/gen_collision_matrix.py
 ```
 
@@ -40,18 +40,19 @@ scripts/gen_collision_matrix.py
 ```bash
 source ~/robots/mod101/install/setup.bash      # underlay first
 source install/setup.bash
-ros2 launch base101_arm_moveit_config demo.launch.py
+ros2 launch base101_bringup_gazebo sim.launch.py arm:=true moveit:=true
 ```
 
 or, against a sim you already have up:
 
 ```bash
-ros2 launch base101_arm_gazebo gazebo.launch.py arm_control:=moveit
+ros2 launch base101_bringup_gazebo sim.launch.py arm:=true arm_control:=moveit
 ros2 launch base101_arm_moveit_config move_group.launch.py
 ```
 
-`arm_control:=moveit` is not optional. `base101_arm_control` declares two
-controllers per group: `arm_controller` / `gripper_controller` take
+`arm_control:=moveit` is not optional (`moveit:=true` sets it for you).
+`base101_control/config/controllers.sim.yaml` declares two controllers per
+group: `arm_controller` / `gripper_controller` take
 `Float64MultiArray` and are what the web slider UIs drive, and
 `arm_trajectory_controller` / `gripper_trajectory_controller` offer
 `FollowJointTrajectory`, which is the only thing MoveIt can execute. Each pair

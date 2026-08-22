@@ -1,0 +1,116 @@
+# Sim controllers for base101 — every configuration, one file.
+#
+# Loaded onto the controller_manager by the gz_ros2_control plugin declared in
+# base101_description/urdf/base101.xacro. Declaring a controller here only
+# makes it spawnable by name; the bringup spawns what the configuration
+# actually has, so an armless robot simply never spawns the arm entries.
+#
+# wheel_separation / wheel_radius are estimated from the URDF visual origins +
+# inertias and should be refined against the physical hardware.
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz — must be int (Jazzy crashes on float)
+    use_sim_time: true
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    diff_drive_controller:
+      type: diff_drive_controller/DiffDriveController
+
+    # --- arm (arm:=true only) ------------------------------------------------
+    arm_controller:
+      type: position_controllers/JointGroupPositionController
+    gripper_controller:
+      type: position_controllers/JointGroupPositionController
+
+    # MoveIt executes over FollowJointTrajectory, which
+    # JointGroupPositionController does not offer. Same arrangement mod101 uses
+    # standalone: declare both, spawn one. Each pair claims the same joints, so
+    # only one of each may be active — the bringup's `arm_control` arg picks
+    # (sliders => the position pair, moveit => these).
+    arm_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+    gripper_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+diff_drive_controller:
+  ros__parameters:
+    left_wheel_names:  ['front_left_wheel_joint',  'back_left_wheel_joint']
+    right_wheel_names: ['front_right_wheel_joint', 'back_right_wheel_joint']
+
+    wheel_separation: 0.2899  # m — rim mid-planes of the chassis URDF (+/-0.14495 m)
+    wheel_radius:     0.0363  # m — 72.6 mm DDSM210 wheel diameter / 2
+
+    publish_rate: 50.0
+    odom_frame_id: odom
+    base_frame_id: base_link
+    enable_odom_tf: true
+
+    open_loop: false
+    position_feedback: true
+
+    pose_covariance_diagonal:  [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+    twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+
+    cmd_vel_timeout: 2.0
+
+    linear.x.has_velocity_limits:     true
+    linear.x.max_velocity:            0.5   # measured DDSM210 rated-speed reality
+    linear.x.min_velocity:           -0.5
+    linear.x.has_acceleration_limits: true
+    linear.x.max_acceleration:        2.0
+
+    angular.z.has_velocity_limits:     true
+    angular.z.max_velocity:            1.5   # matches profile max_angular clamp
+    angular.z.min_velocity:           -1.5
+    angular.z.has_acceleration_limits: true
+    angular.z.max_acceleration:        3.0
+
+# --- arm: position controllers (the web UIs' sliders) -------------------------
+# The mod101 macro is instantiated with prefix "arm_" (arm.xacro), so its
+# joints are arm_<mod101 name>. These must match the ros2_control block the
+# macro emits, not the old arm_1..arm_5 naming. The tool's joint is arm_6
+# whichever tool is fitted.
+arm_controller:
+  ros__parameters:
+    joints: [arm_joint_base, arm_joint_shoulder, arm_joint_elbow,
+             arm_joint_wrist_tilt, arm_joint_wrist_roll]
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+    open_loop_control: true
+
+gripper_controller:
+  ros__parameters:
+    joints: [arm_6]
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+    open_loop_control: true
+
+# --- arm: trajectory controllers, for MoveIt execution ------------------------
+arm_trajectory_controller:
+  ros__parameters:
+    joints: [arm_joint_base, arm_joint_shoulder, arm_joint_elbow,
+             arm_joint_wrist_tilt, arm_joint_wrist_roll]
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    open_loop_control: true
+    allow_partial_joints_goal: false
+    allow_integration_in_goal_trajectories: true
+
+gripper_trajectory_controller:
+  ros__parameters:
+    joints: [arm_6]
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    allow_partial_joints_goal: false
+    allow_integration_in_goal_trajectories: true

@@ -6,7 +6,7 @@
        given name, so declaring simulator=none here before the include
        overrides the description's default. -->
   <xacro:arg name="simulator" default="none"/>
-  <xacro:include filename="$(find base101_simple_description)/urdf/base101_simple.xacro"/>
+  <xacro:include filename="$(find base101_description)/urdf/base101.xacro"/>
 
   <!-- =================================================================
        Hardware ros2_control block — Axon 2 firmware bridge.

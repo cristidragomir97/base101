@@ -1,0 +1,106 @@
+# Unified costmap config for base101.
+# Works in all modes: slam_toolbox always publishes /map, so the static_layer
+# always has a map to subscribe to. In mapping mode the map grows; in
+# localization mode it's the loaded map; in "mapfree" mode it's a SLAM map
+# the user doesn't care about saving but which still provides global context.
+
+# Global costmap - for path planning
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      # 3 Hz update: faster than the static-map default (1 Hz) because in
+      # mapping mode the underlying /map is GROWING and the planner needs
+      # to see clear cells near the robot soon after they appear.
+      update_frequency: 3.0
+      publish_frequency: 2.0
+      global_frame: map
+      robot_base_frame: base_link
+      use_sim_time: false
+      # base101 footprint, MEASURED from the URDF joint tree (base101_simple):
+      # bumpers span x -0.165..+0.175, outside wheels span y +/-0.144 — so the
+      # body is ~0.34 x 0.29 m. 0.18 x 0.15 half-extents enclose it with a few
+      # mm margin. (The old 0.25 x 0.24 was ~double the real width.)
+      footprint: "[[0.18, 0.15], [0.18, -0.15], [-0.18, -0.15], [-0.18, 0.15]]"
+      resolution: 0.05                    # 5cm cells
+      # Keep unknown distinguishable from free: frontier finding (now a
+      # Python mission concern) needs it, and planner.yaml allows planning
+      # across unknown anyway.
+      track_unknown_space: true
+      rolling_window: false               # Use the full SLAM/loaded map
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
+        subscribe_to_updates: true
+        map_topic: /map
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          data_type: "LaserScan"
+          raytrace_max_range: 3.0         # Clear up to 3m
+          raytrace_min_range: 0.0
+          obstacle_max_range: 2.5         # Mark obstacles up to 2.5m
+          obstacle_min_range: 0.0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        # inflation_radius must stay >= the footprint's circumscribed
+        # radius (now ~0.245 m: circle enclosing 0.18 x 0.15 + 0.01 pad)
+        # or Nav2 disables its fast collision-check. 0.30 clears that
+        # floor with a real gradient band and is tiny next to the old
+        # 0.55 — gaps down to ~0.30 m (2x the 0.15 m inscribed radius)
+        # are now passable. cost_scaling 5.0 keeps the high-cost band thin.
+        cost_scaling_factor: 5.0
+        inflation_radius: 0.30
+
+      always_send_full_costmap: true
+
+# Local costmap - for trajectory control
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 3.0               # was 5.0 Nav2 default, lowered for RTF on this dev box
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      use_sim_time: false
+      # base101 footprint, MEASURED from the URDF joint tree (base101_simple):
+      # bumpers span x -0.165..+0.175, outside wheels span y +/-0.144 — so the
+      # body is ~0.34 x 0.29 m. 0.18 x 0.15 half-extents enclose it with a few
+      # mm margin. (The old 0.25 x 0.24 was ~double the real width.)
+      footprint: "[[0.18, 0.15], [0.18, -0.15], [-0.18, -0.15], [-0.18, 0.15]]"
+      rolling_window: true
+      width: 3                            # 3m x 3m rolling window
+      height: 3
+      resolution: 0.05
+      plugins: ["obstacle_layer", "inflation_layer"]
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: true
+          marking: true
+          data_type: "LaserScan"
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 2.5
+          obstacle_min_range: 0.0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 5.0
+        inflation_radius: 0.30            # match the global layer (see above)
+
+      always_send_full_costmap: true

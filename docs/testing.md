@@ -46,21 +46,26 @@ source /opt/ros/jazzy/setup.bash
 source ~/robots/mod101/install/setup.bash
 source install/setup.bash
 
-# --- simple variant: 2 cameras x 3 simulators
+# --- armless: 2 cameras x 3 simulators
 for cam in realsense oak_d; do for sim in none gazebo mujoco; do
-  xacro src/base101/base101_simple_description/urdf/base101_simple.xacro \
-        simulator:=$sim camera:=$cam >/dev/null \
-    && printf "ok simple/%s/%s  " $sim $cam || printf "FAIL simple/%s/%s  " $sim $cam
+  xacro src/base101/base101_description/urdf/base101.xacro \
+        simulator:=$sim camera:=$cam arm:=false >/dev/null \
+    && printf "ok bare/%s/%s  " $sim $cam || printf "FAIL bare/%s/%s  " $sim $cam
 done; done; echo
 
-# --- arm variant: 4 tools x 2 simulators, plus arm:=false
+# --- with arm: 4 tools x 2 simulators
 for tool in jaws parallel none pincopen; do for sim in none gazebo; do
-  xacro src/base101_arm/base101_arm_description/urdf/base101_arm.xacro \
+  xacro src/base101/base101_description/urdf/base101.xacro \
         simulator:=$sim arm:=true arm_tool:=$tool >/dev/null \
     && printf "ok arm/%s/%s  " $sim $tool || printf "FAIL arm/%s/%s  " $sim $tool
-done; done
-xacro src/base101_arm/base101_arm_description/urdf/base101_arm.xacro \
-      simulator:=none arm:=false >/dev/null && printf "ok arm:=false"; echo
+done; done; echo
+
+# --- armless must NOT need the mod101 underlay (regression guard: the arm
+#     include lives inside a <xacro:if>, and must never be lifted out of it)
+env AMENT_PREFIX_PATH="$(python3 -c "import os;print(':'.join(p for p in os.environ['AMENT_PREFIX_PATH'].split(':') if 'mod101' not in p))")" \
+  xacro src/base101/base101_description/urdf/base101.xacro \
+        simulator:=gazebo arm:=false >/dev/null \
+  && echo "ok bare-without-mod101" || echo "FAIL bare-without-mod101"
 
 # --- MoveIt semantics: 4 tools
 for tool in jaws parallel none pincopen; do
@@ -70,18 +75,18 @@ for tool in jaws parallel none pincopen; do
 done; echo
 
 # --- every launch file resolves its args
-for l in "base101_simple_gazebo gazebo.launch.py" \
-         "base101_simple_description display.launch.py" \
-         "base101_arm_gazebo gazebo.launch.py" \
-         "base101_arm_description display.launch.py" \
-         "base101_arm_moveit_config move_group.launch.py" \
-         "base101_arm_moveit_config demo.launch.py"; do
+for l in "base101_bringup_gazebo sim.launch.py" \
+         "base101_bringup_hw robot.launch.py" \
+         "base101_bringup_hw display.launch.py" \
+         "base101_nav nav.launch.py" \
+         "base101_slam slam.launch.py" \
+         "base101_arm_moveit_config move_group.launch.py"; do
   printf "%-52s " "$l"
   timeout 90 ros2 launch $l --show-args >/dev/null 2>&1 && echo ok || echo FAIL
 done
 
 # --- kinematic tree is sane
-xacro src/base101_arm/base101_arm_description/urdf/base101_arm.xacro \
+xacro src/base101/base101_description/urdf/base101.xacro \
       simulator:=gazebo arm:=true > /tmp/base101_arm.urdf
 check_urdf /tmp/base101_arm.urdf | head -3
 ```
@@ -101,7 +106,7 @@ import xml.etree.ElementTree as ET, yaml
 r = ET.parse('/tmp/base101_arm.urdf').getroot()
 joints = {j.get('name') for j in r.findall('joint')}
 rcj = {j.get('name') for rc in r.findall('ros2_control') for j in rc.findall('joint')}
-y = yaml.safe_load(open('src/base101_arm/base101_arm_control/config/controllers.sim.yaml'))
+y = yaml.safe_load(open('src/base101/base101_control/config/controllers.sim.yaml'))
 for n, c in y.items():
     if n == 'controller_manager': continue
     pr = c.get('ros__parameters', {})
@@ -116,7 +121,7 @@ EOF
 ## 2. Simple variant
 
 ```bash
-ros2 launch base101_simple_gazebo gazebo.launch.py
+ros2 launch base101_bringup_gazebo sim.launch.py
 ```
 
 | check | how | pass |
@@ -132,7 +137,7 @@ ros2 launch base101_simple_gazebo gazebo.launch.py
 Camera toggle — the mesh and the simulated FOV change, the topics do not:
 
 ```bash
-ros2 launch base101_simple_gazebo gazebo.launch.py camera:=oak_d
+ros2 launch base101_bringup_gazebo sim.launch.py camera:=oak_d
 ```
 
 **Pass:** the front module is visibly shorter, `/base_camera/*` topics are
@@ -141,14 +146,14 @@ identical, and `camera_link` still exists.
 RViz only, no sim:
 
 ```bash
-ros2 launch base101_simple_description display.launch.py            # joint sliders GUI
-ros2 launch base101_simple_description display.launch.py gui:=false camera:=oak_d
+ros2 launch base101_bringup_hw display.launch.py                     # joint sliders GUI
+ros2 launch base101_bringup_hw display.launch.py gui:=false camera:=oak_d
 ```
 
 ## 3. Arm variant — slider control
 
 ```bash
-ros2 launch base101_arm_gazebo gazebo.launch.py                 # arm:=true is the default
+ros2 launch base101_bringup_gazebo sim.launch.py arm:=true
 ```
 
 | check | how | pass |
@@ -173,7 +178,7 @@ Every tool:
 
 ```bash
 for t in jaws parallel pincopen none; do
-  ros2 launch base101_arm_gazebo gazebo.launch.py arm_tool:=$t
+  ros2 launch base101_bringup_gazebo sim.launch.py arm:=true arm_tool:=$t
 done
 ```
 
@@ -184,14 +189,15 @@ command moves the whole gripper.
 ## 4. Arm variant — MoveIt planning
 
 ```bash
-ros2 launch base101_arm_moveit_config demo.launch.py
+ros2 launch base101_bringup_gazebo sim.launch.py arm:=true moveit:=true
 ```
 
-That is Gazebo with `arm_control:=moveit` plus `move_group`, in order. To drive
-a sim you already have up, in two terminals:
+That is Gazebo with the trajectory controllers plus `move_group`, in order
+(`moveit:=true` forces `arm_control:=moveit`). To drive a sim you already have
+up, in two terminals:
 
 ```bash
-ros2 launch base101_arm_gazebo gazebo.launch.py arm_control:=moveit
+ros2 launch base101_bringup_gazebo sim.launch.py arm:=true arm_control:=moveit
 ros2 launch base101_arm_moveit_config move_group.launch.py
 ```
 
@@ -264,7 +270,7 @@ Rebuild both workspaces, then confirm both robots changed together:
 
 ```bash
 xacro ~/robots/mod101/src/mod101_description/urdf/mod101.xacro | grep -m1 'box size="0.21'
-xacro src/base101_arm/base101_arm_description/urdf/base101_arm.xacro \
+xacro src/base101/base101_description/urdf/base101.xacro \
       simulator:=none arm:=true | grep -m1 'box size="0.21'
 ```
 
@@ -274,7 +280,7 @@ defaults — meaning `arm.xacro` stopped passing the build args through.
 The launch defaults follow too:
 
 ```bash
-ros2 launch base101_arm_gazebo gazebo.launch.py --show-args | grep -A2 "'arm_tool'"
+ros2 launch base101_bringup_gazebo sim.launch.py --show-args | grep -A2 "'arm_tool'"
 ```
 
 **Pass:** `(default: 'parallel')`.
@@ -335,13 +341,17 @@ diff <(grep -o 'link1="[^"]*" link2="[^"]*"' /tmp/before) \
 Lines only in `/tmp/before` are pairs the lower trial count wrongly disabled.
 Expect a handful; if it's dozens, the default needs raising.
 
-## 6. Real hardware (simple variant only)
+## 6. Real hardware (armless only)
 
-The arm is sim-only — `base101_arm_control` has no `controllers.hw.yaml`.
+The arm is sim-only: `controllers.hw.yaml` has no arm section and
+`base101.hardware.xacro` emits a `ros2_control` block for the wheels only, so
+`robot.launch.py` refuses `arm:=true` outright. See
+[findings-open.md](findings-open.md) #3.
 
 ```bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 launch base101_simple_control control_stack.launch.py
+ros2 launch base101_bringup_hw robot.launch.py
+ros2 launch base101_bringup_hw robot.launch.py nav:=false   # wheels only
 ```
 
 See [HARDWARE.md](../HARDWARE.md). Note `controllers.hw.yaml` carries its own

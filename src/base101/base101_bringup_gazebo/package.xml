@@ -1,0 +1,53 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>base101_bringup_gazebo</name>
+  <version>0.1.0</version>
+  <description>
+    Simulation bringup for base101: one launch that puts the robot in Gazebo
+    Sim with its controllers, sensor bridges, autonomy stack and (optionally)
+    an arm with MoveIt. The counterpart of base101_bringup_hw, sharing its
+    argument contract so sim and robot are driven the same way.
+  </description>
+
+  <maintainer email="cristian@robocore.dev">Cristian Dragomir</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Model + tuning -->
+  <exec_depend>base101_description</exec_depend>
+  <exec_depend>base101_control</exec_depend>
+  <exec_depend>base101_worlds</exec_depend>
+
+  <!-- Stacks this composes -->
+  <exec_depend>base101_slam</exec_depend>
+  <exec_depend>base101_nav</exec_depend>
+  <exec_depend>robocore_agent</exec_depend>
+
+  <!-- Sim + control runtime -->
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>ros_gz_image</exec_depend>
+  <exec_depend>gz_ros2_control</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>diff_drive_controller</exec_depend>
+  <exec_depend>position_controllers</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>twist_mux</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>rosboard</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+
+  <!-- arm:=true only. Deliberately NOT declared: mod101 is a separate repo
+       sourced as an underlay, and base101 must build and run without it.
+       base101_arm_moveit_config is likewise only needed for moveit:=true.
+         <exec_depend>mod101_description</exec_depend>
+         <exec_depend>base101_arm_moveit_config</exec_depend> -->
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>base101_nav</name>
+  <version>0.1.0</version>
+  <description>
+    Pure Nav2 stack for the base101 mobile base: planner, controller,
+    bt_navigator, velocity smoother. SLAM/EKF live in base101_slam;
+    the two stacks are deliberately independent (own lifecycle managers,
+    no package dependency) — this one consumes /map and the map-&gt;odom
+    TF from whatever publishes them. No behavior_server: recovery
+    decisions live in the Python mission layer (robocore).
+  </description>
+
+  <maintainer email="cristidragomir97@gmail.com">Cristian Dragomir</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Nav2 dependencies -->
+  <exec_depend>nav2_planner</exec_depend>
+  <exec_depend>nav2_smac_planner</exec_depend>
+  <exec_depend>nav2_controller</exec_depend>
+  <exec_depend>nav2_mppi_controller</exec_depend>
+  <exec_depend>nav2_bt_navigator</exec_depend>
+  <exec_depend>nav2_velocity_smoother</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -1,27 +1,26 @@
 # base101_control
 
 `ros2_control` configuration and bringup for the base101. Owns the
-controller_manager configs, the `twist_mux` priority table, the
-hardware-overlay xacro, and the launch that runs everything on real
-hardware (or against a mocked `GenericSystem`).
+controller_manager configs, the `twist_mux` priority table, and the
+hardware-overlay xacro. Configuration only — the launches that consume it
+live in `base101_bringup_gazebo` and `base101_bringup_hw`.
 
 ## What's here
 
 ```
 config/
-├── controllers.simple.sim.yaml     # diff_drive_controller + JSB for simple variant in sim
-├── controllers.pro.sim.yaml        # same, pro variant
-├── controllers.hw.yaml             # real-hardware controllers config
+├── controllers.sim.yaml            # wheels + arm, every configuration, one file
+├── controllers.hw.yaml             # real-hardware controllers (wheels only, see below)
 └── twist_mux.yaml                  # /cmd_vel priority table
 
 urdf/
-└── base101.hardware.xacro          # wraps base101_description with simulator:=none
-                                    # + a real-hardware ros2_control block
-
-launch/
-└── control_stack.launch.py         # robot_state_publisher + controller_manager +
-                                    # twist_mux for real hardware
+└── base101.hardware.xacro          # wraps base101.xacro with simulator:=none
+                                    # + the Axon bridge ros2_control block
 ```
+
+`controllers.sim.yaml` declares the arm controllers alongside the wheel ones.
+Declaring a controller only makes it spawnable by name, so an armless robot
+never spawns them and the extra entries cost nothing.
 
 ## /cmd_vel routing
 
@@ -50,30 +49,35 @@ joints:
 |---|---|---|
 | Gazebo | `gz_ros2_control/GazeboSimSystem` | `base101_description/urdf/base101.xacro` with `simulator:=gazebo` |
 | MuJoCo | `mujoco_ros2_control/MujocoSystem` | same, with `simulator:=mujoco` |
-| Real HW | `mock_components/GenericSystem` (placeholder — **replace before flying**) | `urdf/base101.hardware.xacro` |
+| Real HW | `base101_control_plugin/ROS2ControlBridge` (Axon 2 firmware over zenoh) | `urdf/base101.hardware.xacro` |
 | Isaac Sim | — | OmniGraph drives joints natively, no ros2_control |
 
-So `controllers.simple.sim.yaml` works as-is for both Gazebo and MuJoCo;
-they just bind to different hardware plugins. Isaac Sim ignores this
-config — see `base101_isaac` for its routing.
+So `controllers.sim.yaml` works as-is for both Gazebo and MuJoCo; they just
+bind to different hardware plugins. Isaac Sim ignores this config — see
+`base101_isaac` for its routing.
+
+**The arm is sim-only.** `controllers.hw.yaml` has no arm section and
+`base101.hardware.xacro` emits a `ros2_control` block for the four wheel
+joints only, so there is nothing for an arm controller to claim on the real
+robot. `base101_bringup_hw` refuses `arm:=true` for that reason — see
+[`docs/findings-open.md`](../../../docs/findings-open.md) #3.
 
 ## Real-hardware bringup
 
 ```bash
-ros2 launch base101_control control_stack.launch.py variant:=simple
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+ros2 launch base101_bringup_hw robot.launch.py
 ```
 
-Before running this on a physical robot, edit
-`urdf/base101.hardware.xacro` and swap the `mock_components/GenericSystem`
-plugin for whatever ros2_control SystemInterface drives your motor bus
-(custom CAN/USB driver, the DDSM Python bridge, etc.).
+Start the host zenoh router and `rmw_zenoh` first — see
+[`HARDWARE.md`](../../../HARDWARE.md).
 
 ## Keeping wheel geometry in sync
 
 `wheel_separation` and `wheel_radius` are duplicated across:
 
-- `config/controllers.simple.sim.yaml` and `controllers.pro.sim.yaml`
-- `base101_mujoco/scenes/base101_simple.xml` and `base101_pro.xml`
+- `config/controllers.sim.yaml` and `config/controllers.hw.yaml`
+- `base101_mujoco/scenes/*.xml`
 - `base101_isaac/launch/isaac.launch.py` (the `WHEEL_GEOMETRY` dict)
 
 If you tweak one, tweak all three. There's no single source of truth

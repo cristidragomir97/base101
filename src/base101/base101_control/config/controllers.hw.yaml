@@ -1,0 +1,51 @@
+# Hardware controllers for the real robot (base101.hardware.xacro +
+# base101_control_plugin/ROS2ControlBridge -> Axon 2 firmware over zenoh).
+# Same topology as sim, use_sim_time:=false.
+#
+# update_rate matches the firmware's joint_states / base_cmd loop (50 Hz,
+# AXON_JOINT_STATES_RATE_HZ) so read()/write() don't outrun the bus.
+# Geometry below is the simple (DDSM210) variant; override for pro.
+#
+# NOTE: there are no arm entries here yet. The arm has no hardware
+# interface — base101.hardware.xacro emits a ros2_control block for the four
+# wheel joints only, so there is nothing for an arm controller to claim.
+# base101_bringup_hw rejects arm:=true for that reason. Adding the arm means
+# a mod101 SystemInterface (or a second ROS2ControlBridge instance) in the
+# hardware xacro first, then mirroring the arm block from controllers.sim.yaml.
+controller_manager:
+  ros__parameters:
+    update_rate: 50
+    use_sim_time: false
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    diff_drive_controller:
+      type: diff_drive_controller/DiffDriveController
+
+diff_drive_controller:
+  ros__parameters:
+    left_wheel_names:  ['front_left_wheel_joint',  'back_left_wheel_joint']
+    right_wheel_names: ['front_right_wheel_joint', 'back_right_wheel_joint']
+
+    # simple (DDSM210); for pro (DDSM115) use 0.38 / 0.05035. Refine on the
+    # physical robot — these match controllers.sim.yaml.
+    wheel_separation: 0.2886  # m
+    wheel_radius:     0.0363  # m — 72.6 mm DDSM210 wheel diameter / 2
+
+    position_feedback: true
+    odom_frame_id: odom
+    base_frame_id: base_link
+    enable_odom_tf: true
+    publish_rate: 50.0
+
+    # The firmware does not stamp base_cmd; diff_drive's own watchdog stops the
+    # wheels if cmd_vel goes stale (twist_mux feeds /diff_drive_controller/cmd_vel).
+    cmd_vel_timeout: 0.5
+
+    linear.x.has_velocity_limits:     true
+    linear.x.max_velocity:            0.5
+    linear.x.min_velocity:           -0.5
+    angular.z.has_velocity_limits:     true
+    angular.z.max_velocity:            1.5
+    angular.z.min_velocity:           -1.5

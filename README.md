@@ -48,7 +48,7 @@ cd ~/robots/base101
 colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
 source install/setup.bash
 
-ros2 launch base101_simple_gazebo gazebo.launch.py
+ros2 launch base101_bringup_gazebo sim.launch.py
 ```
 
 That's a robot in Gazebo, driving, scanning, publishing `/odom` — open
@@ -63,7 +63,7 @@ cd ~/robots/base101
 colcon build --symlink-install --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
 source install/setup.bash
 
-ros2 launch base101_arm_gazebo gazebo.launch.py arm:=true
+ros2 launch base101_bringup_gazebo sim.launch.py arm:=true
 ```
 
 **This is the only place the build is documented** — everything below assumes
@@ -73,25 +73,38 @@ you've run it. Two footnotes that will save you an afternoon:
   here, and it guards against a stray non-system python on `PATH` breaking
   ament's `package.xml` parsing and `rosidl`'s `em` import. Tired of typing it?
   Set it once in `~/.colcon/defaults.yaml` — see [`HARDWARE.md`](HARDWARE.md).
-- **`rosdep` has never heard of `mod101_description`.** It's an `exec_depend` of
-  `base101_arm_description` but not a rosdep key, so pass
-  `--skip-keys mod101_description` if you run `rosdep install`.
+- **`rosdep` has never heard of `mod101_description`.** base101 deliberately
+  does not declare it (the arm include sits inside a `<xacro:if>`, so an
+  armless workspace never resolves it), but if you run `rosdep install` with
+  mod101 present, pass `--skip-keys mod101_description`.
 
 ### Things to try
 
 ```bash
-ros2 launch base101_simple_gazebo gazebo.launch.py                    # bare chassis, sticky_floor world
-ros2 launch base101_arm_gazebo    gazebo.launch.py arm:=true          # chassis + 1 mod101 arm
-ros2 launch base101_simple_gazebo gazebo.launch.py world:=empty.sdf   # pick a world
-ros2 launch base101_simple_gazebo gazebo.launch.py camera:=oak_d      # Luxonis OAK-D instead of the D435
-ros2 launch base101_simple_description display.launch.py              # rviz only, no sim
+ros2 launch base101_bringup_gazebo sim.launch.py                    # bare chassis, sticky_floor world
+ros2 launch base101_bringup_gazebo sim.launch.py arm:=true          # chassis + 1 mod101 arm
+ros2 launch base101_bringup_gazebo sim.launch.py world:=empty.sdf   # pick a world
+ros2 launch base101_bringup_gazebo sim.launch.py camera:=oak_d      # Luxonis OAK-D instead of the D435
+ros2 launch base101_bringup_gazebo sim.launch.py nav:=false         # no SLAM/Nav2, just the robot
+ros2 launch base101_bringup_gazebo sim.launch.py agent:=false       # no robocore agent
+ros2 launch base101_bringup_hw     display.launch.py                # rviz only, no sim
 ```
 
 `camera:=realsense|oak_d` picks which depth module hangs off the front bracket
 (default `realsense`). It only swaps the mesh and the simulated FOV — topics
 stay `/base_camera/*` and frames stay `camera_link` / `camera_optical_frame`
-either way, so nothing downstream notices. Both `gazebo.launch.py` and
+either way, so nothing downstream notices. Both `sim.launch.py` and
 `display.launch.py` take it.
+
+SLAM, Nav2 and the robocore agent all come up with the sim by default
+(`nav:=false` / `slam:=false` / `agent:=false` to skip). Nav2 alone is inert —
+it blocks in `Activating` until something publishes the `map` frame — so SLAM
+and Nav2 start together.
+
+The agent picks its profile from `engine/profiles/` by configuration:
+`base101.yaml` armless, `base101_arm.yaml` with `arm:=true`. Override with
+`profile:=/path/to.yaml` or `$ROBOCORE_PROFILE`; it serves JSON-RPC on
+`ws://:10101` and `/tmp/robocore.sock` (`agent_port:=` / `agent_socket:=`).
 
 Manual test procedures for every variant, tool and launch combination are in
 [`docs/testing.md`](docs/testing.md).
@@ -103,7 +116,7 @@ zenoh, so bringup is two lines:
 
 ```bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 launch base101_simple_control control_stack.launch.py
+ros2 launch base101_bringup_hw robot.launch.py
 ```
 
 Firmware, the zenoh router, serial devices and udev rules:
@@ -117,9 +130,9 @@ that's designed to be embedded — it's a prefix-parameterised xacro macro, so
 base101 mounts it with one call and gets joints `arm_1…6`.
 
 ```bash
-ros2 launch base101_arm_gazebo gazebo.launch.py arm:=true                   # jaws gripper
-ros2 launch base101_arm_gazebo gazebo.launch.py arm:=true arm_tool:=parallel
-ros2 launch base101_arm_description display.launch.py arm:=true             # rviz only
+ros2 launch base101_bringup_gazebo sim.launch.py arm:=true                   # jaws gripper
+ros2 launch base101_bringup_gazebo sim.launch.py arm:=true arm_tool:=parallel
+ros2 launch base101_bringup_hw display.launch.py arm:=true                   # rviz only
 ```
 
 You don't configure the arm here. Rail lengths, servo mounts and the active
@@ -135,7 +148,7 @@ three places:
 
 | Crossing | Where, in base101 | What it pulls from mod101 |
 |---|---|---|
-| **Geometry** | `base101_arm_description/urdf/arm.xacro` | `<xacro:mod101_arm prefix="arm_" parent="top_plate_1">` from `mod101_macro.xacro` |
+| **Geometry** | `base101_description/urdf/arm.xacro` | `<xacro:mod101_arm prefix="arm_" parent="top_plate_1">` from `mod101_macro.xacro` |
 | **Semantics** | `base101_arm_moveit_config/srdf/base101_arm.srdf.xacro` | `<xacro:mod101_arm_srdf prefix="arm_" tool=…>` from `mod101_moveit_config` |
 | **Build args** | both files above | `mod101_config.xacro` — rail lengths, servo mounts, active tool |
 
@@ -154,7 +167,7 @@ Two things worth knowing before they confuse you:
 ### Motion planning
 
 ```bash
-ros2 launch base101_arm_moveit_config demo.launch.py     # gazebo + move_group
+ros2 launch base101_bringup_gazebo sim.launch.py arm:=true moveit:=true   # gazebo + move_group
 ```
 
 This config exists because mod101's own only knows arm-vs-arm collisions — but
@@ -163,9 +176,9 @@ robot needs its own self-collision matrix. The planning scene knows the robot,
 not the world; [`docs/obstacle-awareness.md`](docs/obstacle-awareness.md)
 covers where perceived obstacles should live relative to a picking layer.
 
-One gotcha: the sim has to run with `arm_control:=moveit` (the demo launch does
-this for you) so it spawns `FollowJointTrajectory` controllers instead of the
-`Float64MultiArray` ones the web sliders use. Details in
+One gotcha: the sim has to run with `arm_control:=moveit` so it spawns
+`FollowJointTrajectory` controllers instead of the `Float64MultiArray` ones the
+web sliders use — `moveit:=true` forces that for you. Details in
 [`base101_arm_moveit_config/README.md`](src/base101_arm/base101_arm_moveit_config/README.md).
 
 **Controllers** — arm and gripper are
@@ -207,7 +220,7 @@ robot does, so code written against sim moves over unchanged.
 Each variant takes a `simulator` xacro arg (`gazebo` | `none`) that decides
 whether the URDF carries the sim `ros2_control` and extension tags; `none` is
 the bare URDF for rviz and real hardware. Worlds and the gz↔ros bridge config
-live in the shared `base101_gazebo` package.
+live in the shared `base101_worlds` package.
 
 ## How the workspace is put together
 
@@ -219,84 +232,88 @@ It's a **shared core** plus one self-contained stack per **variant**
 the folders are purely organisational. Packages parked out of the build live in
 [`attic/`](attic/README.md).
 
-**Core / shared** — `src/base101/`
+**Model, config and worlds** — `src/base101/`
 
 | Package | Type | Purpose |
 |---|---|---|
-| `base101_description` | ament_python | **Shared chassis library**: chassis links/joints, sensors, materials, meshes. Every variant `xacro:include`s its `chassis.xacro` — *not launched directly*. |
-| `base101_control` | ament_cmake | Control-common: `twist_mux` config. |
-| `base101_control_plugin` | ament_cmake | `ros2_control` SystemInterface bridging wheel/arm/camera command+state interfaces to the Axon firmware's `/motor_manager/*` topics (zenoh). Shared by all variants. |
-| `base101_gazebo` | ament_cmake | Sim-common: Gazebo worlds, ros↔gz bridge, RViz preset. |
+| `base101_description` | ament_python | **The robot**: `base101.xacro` (one description, `arm:=` picks the configuration), chassis links/joints, sensors, materials, meshes. *Not launched directly.* |
+| `base101_control` | ament_cmake | Tuning: `controllers.{sim,hw}.yaml`, `twist_mux.yaml`, and the hardware overlay `base101.hardware.xacro`. |
+| `base101_control_plugin` | ament_cmake | `ros2_control` SystemInterface bridging wheel/arm/camera command+state interfaces to the Axon firmware's `/motor_manager/*` topics (zenoh). |
+| `base101_worlds` | ament_cmake | Sim-common assets: Gazebo worlds, ros↔gz bridge, RViz preset. |
 
-**Variant stacks** — each is a self-contained `description` + `gazebo` +
-`control` trio that includes the shared chassis and adds only its own hardware.
-You launch a variant package, never `base101_description`.
+**Stacks** — own their own launch, composed by the bringup packages
 
-| Variant | Folder | Adds to the chassis | Packages |
-|---|---|---|---|
-| **simple** | `src/base101/` | nothing (the bare base robot) | `base101_simple_{description,gazebo,control}` |
-| **arm** | `src/base101_arm/` | 1 mod101 arm on the chassis deck | `base101_arm_{description,gazebo,control,moveit_config}` |
+| Package | Type | Purpose |
+|---|---|---|
+| `base101_slam` | ament_cmake | EKF (robot_localization) + slam_toolbox: `/map` and the `map->odom` TF. |
+| `base101_nav` | ament_cmake | Nav2: planner, controller, bt_navigator, velocity smoother, behavior trees. |
+| `base101_arm_moveit_config` | ament_cmake | `src/base101_arm/` — MoveIt semantics for the composed chassis+arm robot, and `move_group.launch.py`. |
+
+**Bringup** — the only launches you type
+
+| Package | Type | Purpose |
+|---|---|---|
+| `base101_bringup_gazebo` | ament_cmake | `sim.launch.py` — the whole robot in Gazebo: model, controllers, bridges, SLAM, Nav2, optionally arm + MoveIt. |
+| `base101_bringup_hw` | ament_cmake | `robot.launch.py` — the same graph on real hardware, same argument names. Also owns `display.launch.py` (RViz only). |
+
+Arm or no arm is the `arm:=` argument, not a package. Before the 2026-08
+restructure it was six packages (`base101_simple_{description,gazebo,control}`
+and `base101_arm_{description,gazebo,control}`) expressing one boolean — see
+[`docs/bringup-restructure.md`](docs/bringup-restructure.md).
 
 **Other tooling** — `src/`
 
 | Package | Type | Purpose |
 |---|---|---|
-| `robocore_agent` | ament_python | Robocore (blueprint engine) agent: ROS interface, task/safety model, Nav2 + SLAM managers, sensor streams. |
+| `robocore_agent` | ament_python | Robocore (blueprint engine) agent: ROS interface, task/safety model, Nav2 + SLAM managers, sensor streams. Launched by both bringup packages (`agent:=false` to skip); commands `/cmd_vel_agent` at twist_mux priority 50. |
 | `base101_mcp` | ament_python | Generic ROS2 ↔ MCP (Model Context Protocol) bridge. Lets Claude (or any MCP client) discover topics/services and read/publish messages over natural language. Requires `pip install "fastmcp>=2,<3"`. |
 | `base101_teleop` | ament_python | Standalone single-page web teleop (base + every joint) on `:8700`. Fallback for the rosboard Joint sliders card. |
 | `rosboard` | ament_python | Vendored web dashboard. Carries two publisher cards: **Teleop** (Twist) and **Joint sliders** (Float64MultiArray position commands for tower + arms). |
 
 ```mermaid
 graph TD
-    subgraph shared["src/base101/ — core / shared"]
-        DESC["base101_description<br/><i>chassis library: chassis.xacro,<br/>sensors, materials, meshes</i>"]
+    subgraph bringup["bringup — what you launch"]
+        SIM["base101_bringup_gazebo<br/><i>sim.launch.py</i>"]
+        HW["base101_bringup_hw<br/><i>robot.launch.py, display.launch.py</i>"]
+    end
+
+    subgraph stacks["stacks — own launch, composed above"]
+        SLAM["base101_slam<br/><i>EKF + slam_toolbox</i>"]
+        NAV["base101_nav<br/><i>Nav2</i>"]
+        MOVEIT["base101_arm_moveit_config<br/><i>move_group</i>"]
+    end
+
+    subgraph model["model, config, worlds"]
+        DESC["base101_description<br/><i>base101.xacro + arm.xacro,<br/>chassis, sensors, meshes</i>"]
+        CTRL["base101_control<br/><i>controllers.{sim,hw}.yaml,<br/>twist_mux, hardware xacro</i>"]
         PLUGIN["base101_control_plugin<br/><i>ros2_control ↔ Axon bridge</i>"]
-        CTRL["base101_control<br/><i>twist_mux</i>"]
-        GZ["base101_gazebo<br/><i>worlds, gz bridge, rviz</i>"]
+        GZ["base101_worlds<br/><i>worlds, gz bridge, rviz</i>"]
     end
 
-    subgraph simple["src/base101/ — simple variant"]
-        SDESC[base101_simple_description]
-        SGZ[base101_simple_gazebo]
-        SCTRL[base101_simple_control]
-    end
+    MOD["mod101_description<br/><i>(underlay, arm:=true only)</i>"]
 
-    subgraph arm["src/base101_arm/ — arm variant"]
-        ADESC[base101_arm_description]
-        AGZ[base101_arm_gazebo]
-        ACTRL[base101_arm_control]
-    end
+    SIM --> DESC & CTRL & GZ
+    HW  --> DESC & CTRL
+    SIM -.->|composes| SLAM & NAV & MOVEIT
+    HW  -.->|composes| SLAM & NAV
 
-    MOD["mod101_description<br/><i>(underlay)</i>"]
-
-    %% every variant description includes the shared chassis
-    SDESC -->|includes chassis.xacro| DESC
-    ADESC -->|includes chassis.xacro| DESC
-
-    %% the arm variant pulls the mod101 arm macro
-    ADESC -->|mod101_arm macro| MOD
-
-    %% control: hardware bridge + sim controller path
-    SCTRL -->|hardware xacro includes| SDESC
-    SCTRL --> PLUGIN
-    SDESC -.->|gz plugin loads controllers.sim.yaml| SCTRL
-    ADESC -.->|gz plugin loads controllers.sim.yaml| ACTRL
-
-    %% gazebo bringup ties description + control + sim-common
-    SGZ --> SDESC & SCTRL & GZ & CTRL
-    AGZ --> ADESC & ACTRL & GZ & CTRL
+    DESC -->|arm:=true, inside xacro:if| MOD
+    CTRL -->|hardware xacro| PLUGIN
+    DESC -.->|gz plugin loads controllers.sim.yaml| CTRL
 ```
 
-Solid arrows are build/`xacro:include` dependencies; dashed arrows are the
-runtime `gz_ros2_control` controller-file lookup (resolved at Gazebo spawn,
-carried as a manifest dep by the `*_gazebo` package to avoid a cycle).
+Solid arrows are build/`xacro:include` dependencies; dashed arrows are runtime
+composition — the bringup packages including a stack's launch file, and the
+`gz_ros2_control` controller-file lookup resolved at Gazebo spawn.
 
 ## Deeper docs
 
 **Use it**
 
 - **[`HARDWARE.md`](HARDWARE.md)** — real-robot bringup: Axon 2 firmware, the zenoh router, serial devices, udev
-- **[`docs/testing.md`](docs/testing.md)** — manual test procedures for every variant, tool and launch combination
+- **[`docs/testing.md`](docs/testing.md)** — manual test procedures for every configuration, tool and launch combination
+- **[`docs/findings-open.md`](docs/findings-open.md)** — known-open issues: the arm has no hardware path, an unconfirmed cold-map nav abort, an inflation-radius warning
+- **[`docs/bringup-restructure.md`](docs/bringup-restructure.md)** — why there are two bringup packages and one description
 
 **Build on it**
 
@@ -309,7 +326,7 @@ carried as a manifest dep by the `*_gazebo` package to avoid a cycle).
 
 - **[`docs/worklogs/dual_arm.md`](docs/worklogs/dual_arm.md)** — dual-arm integration: mount-point measurement, the arm-yaw fix, the stale-`robot_state_publisher` gotcha
 - **[`docs/worklogs/tower.md`](docs/worklogs/tower.md)** — the parked cross tower
-- **[`docs/worklogs/nav.md`](docs/worklogs/nav.md)**, **[`docs/worklogs/nav_restructure.md`](docs/worklogs/nav_restructure.md)** — Nav2 + slam_toolbox porting notes. **These describe `src/base101_nav/` and a `base101.repos` file, neither of which is in this workspace** — read them as history, not instructions.
+- **[`docs/worklogs/nav.md`](docs/worklogs/nav.md)**, **[`docs/worklogs/nav_restructure.md`](docs/worklogs/nav_restructure.md)** — Nav2 + slam_toolbox porting notes, and why the two stacks are deliberately independent
 
 ## Related Projects
 
