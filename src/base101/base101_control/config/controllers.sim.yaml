@@ -33,6 +33,19 @@ controller_manager:
     gripper_trajectory_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
+# joint_state_broadcaster deliberately has no parameter block: with 'joints'
+# and 'interfaces' empty it publishes every available state interface, which
+# is what we want for every configuration (armless included).
+#
+# If /joint_states ever comes back with `name: []` at full rate while
+# /dynamic_joint_states is populated, do NOT reach for
+# `use_urdf_to_filter: false`. That split means JSB's URDF filter is checking
+# joints against the WRONG robot description — on 2026-08-23 it was a
+# depthai/OAK-D `/robot_description` arriving from another machine on the LAN
+# (an Orin Nano) because the stack was on ROS_DOMAIN_ID 0 with multicast
+# discovery. The same stray description also aborted Gazebo outright with
+# "no 'ros2_control' tag found in the URDF". Fix the domain, not the filter.
+
 diff_drive_controller:
   ros__parameters:
     left_wheel_names:  ['front_left_wheel_joint',  'back_left_wheel_joint']

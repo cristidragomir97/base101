@@ -133,10 +133,21 @@ def _setup(context, *args, **kwargs):
     arm = arg('arm') == 'true'
     arm_tool = arg('arm_tool')
     moveit = arg('moveit') == 'true'
+    headless = arg('headless') == 'true'
     # move_group executes over FollowJointTrajectory, so moveit:=true implies
     # the trajectory controllers whatever arm_control says. Both variants of
-    # each controller claim the same joints, so exactly one may be active.
-    arm_control = 'moveit' if moveit else arg('arm_control')
+    # each controller claim the same joints, so exactly one may be ACTIVE —
+    # but both are loaded (see the spawners below), and arm_control now picks
+    # which one starts active rather than which one exists.
+    #
+    # `moveit`/`sliders` are the old spelling, kept as aliases. They named a
+    # planner and a web UI; the argument actually selects a controller type,
+    # and the trajectory controllers have nothing to do with move_group —
+    # arm_control:=trajectory moveit:=false is a perfectly good combination
+    # (and is what the robocore agent wants).
+    _ALIASES = {'moveit': 'trajectory', 'sliders': 'position'}
+    _requested = arg('arm_control')
+    arm_control = 'trajectory' if moveit else _ALIASES.get(_requested, _requested)
     nav = arg('nav') == 'true'
     slam = arg('slam') == 'true'
     agent = arg('agent') == 'true'
@@ -195,10 +206,24 @@ def _setup(context, *args, **kwargs):
                      'use_sim_time': True}],
     )
 
+    # headless:=true runs the server WITHOUT the Qt GUI: no DISPLAY, no xhost,
+    # no X11 socket, and nothing for a user to close by accident. That last
+    # one matters — `gz sim` is one process for server and GUI, so closing the
+    # window exits it cleanly while ros2 launch keeps the bridges and
+    # robot_state_publisher alive. The result is a container that still looks
+    # healthy and still advertises every topic, but publishes nothing and has
+    # no /clock. Headless removes that failure mode entirely.
+    #
+    # --headless-rendering keeps camera/depth sensors working: the Sensors
+    # system plugin still needs ogre2, but renders offscreen through EGL
+    # rather than against a display. Without it the sim runs but every camera
+    # topic stays silent, which is a nastier bug than a hard failure.
+    gz_args = (f'-s -r --headless-rendering {world_file}' if headless
+               else f'-r {world_file}')
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')),
-        launch_arguments={'gz_args': f'-r {world_file}'}.items(),
+        launch_arguments={'gz_args': gz_args}.items(),
     )
 
     clock_bridge = Node(
@@ -277,7 +302,15 @@ def _setup(context, *args, **kwargs):
         # Arm controller params are already on the controller_manager (the
         # gz_ros2_control plugin loaded controllers.sim.yaml at spawn), so
         # these only need spawning by name.
-        suffix = '_trajectory_controller' if arm_control == 'moveit' else '_controller'
+        #
+        # ONE controller per exclusive pair is spawned — position by default
+        # (Cristi, 2026-08-23). The twin is declared in controllers.sim.yaml
+        # but not spawned, so its type and parameters are already on the
+        # controller_manager: the robocore agent brings it up ON DEMAND at
+        # control-session entry with load_controller + configure_controller +
+        # switch_controller, and drops back on exit. Nothing but the agent
+        # ever needs the trajectory pair, so nothing but the agent loads it.
+        suffix = '_trajectory_controller' if arm_control == 'trajectory' else '_controller'
         post_jsb.append(spawner('arm' + suffix))
         if arm_tool != 'none':
             post_jsb.append(spawner('gripper' + suffix))
@@ -368,12 +401,21 @@ def generate_launch_description():
             description='mod101 end-effector (mod101_tool_<name>). Defaults to '
                         "the web configurator's saved tool."),
         DeclareLaunchArgument(
-            'arm_control', default_value='sliders',
-            choices=['sliders', 'moveit'],
-            description='Arm controllers to spawn: sliders = position '
+            'arm_control', default_value='position',
+            choices=['position', 'trajectory', 'sliders', 'moveit'],
+            description='Which arm controller starts ACTIVE. Both are always '
+                        'loaded, so the robocore agent can switch at runtime. '
+                        'position = JointGroupPositionController '
                         '(Float64MultiArray, what the web UIs drive), '
-                        'moveit = trajectory (FollowJointTrajectory). '
-                        'moveit:=true forces this to moveit.'),
+                        'trajectory = JointTrajectoryController '
+                        '(FollowJointTrajectory). moveit:=true forces '
+                        'trajectory. `sliders`/`moveit` are deprecated '
+                        'aliases for position/trajectory.'),
+        DeclareLaunchArgument(
+            'headless', default_value='false', choices=['true', 'false'],
+            description='Run gz sim server-only (-s), no Qt GUI. Sensors '
+                        'still render offscreen via --headless-rendering. '
+                        'The right mode for CI and for containers.'),
         DeclareLaunchArgument(
             'moveit', default_value='false', choices=['true', 'false'],
             description='Start move_group too. Implies arm_control:=moveit; '

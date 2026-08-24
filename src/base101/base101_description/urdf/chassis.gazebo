@@ -96,7 +96,11 @@
   <sensor name="base_camera" type="camera">
     <topic>base_camera/image_raw</topic>
     <gz_frame_id>camera_optical_frame</gz_frame_id>
-    <update_rate>30</update_rate>
+    <update_rate>15</update_rate>  <!-- 30 was not sustainable:
+         both cameras achieved only ~24-26 Hz, dropping frames
+         independently, and a burst drop on depth stalled it ~400 ms —
+         long enough that no rgb/depth pair remained within tolerance.
+         15 Hz is sustained, so the two stay in lockstep. -->
     <always_on>1</always_on>
     <visualize>true</visualize>
     <camera>
@@ -116,7 +120,11 @@
   <sensor name="base_camera_depth" type="depth_camera">
     <topic>base_camera/depth_image</topic>
     <gz_frame_id>camera_optical_frame</gz_frame_id>
-    <update_rate>30</update_rate>
+    <update_rate>15</update_rate>  <!-- 30 was not sustainable:
+         both cameras achieved only ~24-26 Hz, dropping frames
+         independently, and a burst drop on depth stalled it ~400 ms —
+         long enough that no rgb/depth pair remained within tolerance.
+         15 Hz is sustained, so the two stay in lockstep. -->
     <always_on>1</always_on>
     <visualize>false</visualize>
     <camera>
