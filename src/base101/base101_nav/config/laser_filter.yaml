@@ -1,12 +1,51 @@
-# Laser filter configuration
-# Filters out laser readings that hit the robot body
-# Only keeps readings from 0-90° (front-right) and 270-360° (front-left)
+# Keep the lidar from reporting the robot's own chassis.
+#
+# WHY THIS EXISTS. The lidar sits at x=+0.117 in base_link and spins a full
+# 360 degrees, while the chassis extends to x=-0.17 — so every scan includes
+# rays that terminate on the robot's own body, 0.16-0.27 m behind it. Nav2
+# inflates those into lethal cells around the robot's own footprint, and the
+# symptom is `planner_server: "Start occupied"` with goals failing in ~0.3 s
+# from a position that looks perfectly clear.
+#
+# MEASURED, 2026-08-25, over 8 consecutive scans on the sim: 17 of 360 rays
+# land inside the chassis footprint, all of them at |angle| >= 151 deg:
+#
+#   -172 -171 -170 -169 -168 -167 -166 -165 -164 -151  151 165 166 167 168 170 171
+#
+# So the widest clean symmetric arc is +/-150 deg. We keep +/-135, which
+# leaves 16 deg of margin for beam width and for anything later bolted to
+# the back deck, while still keeping three quarters of the scan — that
+# matters, because every ray thrown away is one SLAM cannot use for loop
+# closure.
+#
+# READ THIS BEFORE EDITING THE ANGLES. LaserScanAngularBoundsFilterInPlace
+# blanks the rays *between* lower_angle and upper_angle — it masks a wedge
+# out, it does not select one to keep. So these bounds describe the REAR
+# arc being discarded, not the front arc being kept. A first version of
+# this file set (-2.3562, +2.3562) reading it the other way round, which
+# silently deletes the entire forward view and leaves only the self-hits.
+# It takes two stages because the rear wedge straddles +/-180 and a single
+# (lower, upper) interval cannot wrap.
+#
+# An earlier version used +/-90 deg and was NEVER LAUNCHED: nothing
+# referenced it, and both costmaps read raw /scan. Widening it is safe
+# precisely because the number above is measured; do not narrow it again
+# without re-measuring on the robot you actually have.
 
 scan_to_scan_filter_chain:
   ros__parameters:
+    # InPlace keeps the array length and the angle bounds, writing blanked
+    # rays as range_max + 1. Consumers that assume a fixed-size scan (and
+    # there are some) keep working, and costmaps drop over-range returns.
     filter1:
       type: laser_filters/LaserScanAngularBoundsFilterInPlace
-      name: angular_filter
+      name: rear_left
       params:
-        lower_angle: -1.5708   # -90° in radians (270° from robot perspective)
-        upper_angle: 1.5708    # 90° in radians
+        lower_angle:  2.3562   # +135 deg
+        upper_angle:  3.2      # past +180: catches the last bin
+    filter2:
+      type: laser_filters/LaserScanAngularBoundsFilterInPlace
+      name: rear_right
+      params:
+        lower_angle: -3.2      # past -180
+        upper_angle: -2.3562   # -135 deg

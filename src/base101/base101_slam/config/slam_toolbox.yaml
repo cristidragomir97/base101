@@ -19,7 +19,10 @@ slam_toolbox:
     odom_frame: odom
     map_frame: map
     base_frame: base_link
-    scan_topic: /scan
+    # /scan_filtered, not /scan: the raw scan contains the robot's own
+    # chassis behind the lidar, which SLAM would otherwise map as a
+    # permanent obstacle that follows the robot around.
+    scan_topic: /scan_filtered
 
     # Default mode: mapping. The bridge switches to localization
     # via the /slam_toolbox/deserialize_map service when needed.

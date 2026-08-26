@@ -255,6 +255,31 @@ def _setup(context, *args, **kwargs):
         )
     ]
 
+    # The lidar spins 360 and the chassis is behind it, so raw /scan
+    # contains the robot's own body (measured: 17 of 360 rays, all at
+    # |angle| >= 151 deg). Nav2 inflates those into lethal cells around
+    # the robot's own footprint — the "Start occupied" failure. Everything
+    # downstream consumes /scan_filtered instead.
+    #
+    # It runs with the BODY rather than with slam or nav: a sensor that
+    # reports the vehicle it is bolted to is wrong before anyone consumes
+    # it, and on hardware this node belongs beside the driver for the same
+    # reason.
+    scan_filter = Node(
+        package='laser_filters',
+        executable='scan_to_scan_filter_chain',
+        # NOT renamed. laser_filter.yaml keys its parameters under
+        # `scan_to_scan_filter_chain:`, so a `name=` override here would
+        # leave the chain empty and pass the scan through untouched — with
+        # no error, because an empty chain is a legal chain.
+        parameters=[os.path.join(
+            get_package_share_directory('base101_nav'),
+            'config', 'laser_filter.yaml'),
+            {'use_sim_time': True}],
+        remappings=[('scan', '/scan'), ('scan_filtered', '/scan_filtered')],
+        output='screen',
+    )
+
     twist_mux = Node(
         package='twist_mux',
         executable='twist_mux',
@@ -361,6 +386,7 @@ def _setup(context, *args, **kwargs):
         clock_bridge,
         bridge,
         *image_bridges,
+        scan_filter,
         twist_mux,
         spawn_robot,
         after_spawn,
